@@ -42,6 +42,8 @@ class Discovery:
 
         self.postgres_user = os.environ.get('ZMON_AGENT_POSTGRES_USER')
         self.postgres_pass = os.environ.get('ZMON_AGENT_POSTGRES_PASS')
+        if not (self.postgres_user and self.postgres_pass):
+            logger.warning('No credentials provided for PostgreSQL database discovery!')
 
         if not self.cluster_id:
             raise RuntimeError('Cannot determine cluster ID. Please set env variable ZMON_AGENT_KUBERNETES_CLUSTER_ID')
@@ -425,6 +427,9 @@ def list_postgres_databases(*args, **kwargs):
 def get_cluster_postgresdbs(kube_client, cluster_id, alias, region, infrastructure_account,
                             postgres_user, postgres_pass,
                             namespace=None):
+    if not (postgres_user and postgres_pass):
+        return []
+
     entities = []
 
     services = get_all(kube_client, kube_client.get_services, namespace)
