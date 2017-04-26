@@ -3,6 +3,7 @@
 # TODO: this is pilot implementation!
 
 import os
+import sys
 import logging
 import psycopg2
 
@@ -30,6 +31,8 @@ SKIPPED_ANNOTATIONS = (
 )
 
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler(stream=sys.stdout))
+logger.setLevel(logging.INFO)
 
 
 class Discovery:
@@ -414,14 +417,20 @@ def get_cluster_daemonsets(kube_client, cluster_id, alias, region, infrastructur
 
 
 def list_postgres_databases(*args, **kwargs):
-    conn = psycopg2.connect(*args, **kwargs)
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT datname
-          FROM pg_database
-         WHERE datname NOT IN('postgres', 'template0', 'template1')
-    """)
-    return [row[0] for row in cur.fetchall()]
+    logger.info("Trying to list DBs on host: {}".format(kwargs['host']))
+
+    try:
+        conn = psycopg2.connect(*args, **kwargs)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT datname
+              FROM pg_database
+             WHERE datname NOT IN('postgres', 'template0', 'template1')
+        """)
+        return [row[0] for row in cur.fetchall()]
+    except:
+        logger.exception("Failed to list DBs!")
+        return []
 
 
 def get_cluster_postgresdbs(kube_client, cluster_id, alias, region, infrastructure_account,
@@ -450,7 +459,8 @@ def get_cluster_postgresdbs(kube_client, cluster_id, alias, region, infrastructu
                                           port=service_port,
                                           user=postgres_user,
                                           password=postgres_pass,
-                                          dbname='postgres')
+                                          dbname='postgres',
+                                          sslmode='require')
         for db in dbnames:
             entity = {
                 'id': 'postgresdb-{}-{}-{}[{}]'.format(db, service.name, service.namespace, cluster_id),
