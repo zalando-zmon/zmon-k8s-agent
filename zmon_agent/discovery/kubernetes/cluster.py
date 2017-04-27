@@ -463,7 +463,7 @@ def get_cluster_postgresdbs(kube_client, cluster_id, alias, region, infrastructu
                                           sslmode='require')
         for db in dbnames:
             entity = {
-                'id': 'postgresdb-{}-{}-{}[{}]'.format(db, service.name, service.namespace, cluster_id),
+                'id': '{}-{}-{}[{}]'.format(db, service.name, service.namespace, cluster_id),
                 'type': POSTGRESDB_TYPE,
                 'kube_cluster': cluster_id,
                 'alias': alias,
