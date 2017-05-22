@@ -118,7 +118,7 @@ class Discovery:
 
         all_current_entities = (
             pod_entities + node_entities + service_entities + replicaset_entities + daemonset_entities +
-            ingress_entities + statefulset_entities + postgresql_cluster_entities + postgresql_cluster_member_entities + 
+            ingress_entities + statefulset_entities + postgresql_cluster_entities + postgresql_cluster_member_entities +
             postgresql_database_entities
         )
 
