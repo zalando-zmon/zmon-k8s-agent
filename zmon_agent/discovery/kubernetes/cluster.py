@@ -88,8 +88,8 @@ class Discovery:
 
         # Pass pod_entities in order to get node_pod_count!
         node_entities = get_cluster_nodes(
-            self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account, pod_entities,
-            namespace=self.namespace)
+            self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
+            pod_entities, namespace=self.namespace)
 
         service_entities = get_cluster_services(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
@@ -115,8 +115,8 @@ class Discovery:
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
             namespace=self.namespace)
         postgresql_database_entities = get_postgresql_databases(
-            postgresql_cluster_entities, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
-            self.postgres_user, self.postgres_pass)
+            postgresql_cluster_entities, self.cluster_id, self.alias, self.environment, self.region,
+            self.infrastructure_account, self.postgres_user, self.postgres_pass)
 
         all_current_entities = (
             pod_entities + node_entities + service_entities + replicaset_entities + daemonset_entities +
@@ -326,7 +326,8 @@ def get_cluster_nodes(
     return entities
 
 
-def get_cluster_replicasets(kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace=None):
+def get_cluster_replicasets(kube_client, cluster_id, alias, environment, region, infrastructure_account,
+                            namespace=None):
     entities = []
 
     replicasets = get_all(kube_client, kube_client.get_replicasets, namespace)
@@ -363,7 +364,8 @@ def get_cluster_replicasets(kube_client, cluster_id, alias, environment, region,
     return entities
 
 
-def get_cluster_statefulsets(kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace='default'):
+def get_cluster_statefulsets(kube_client, cluster_id, alias, environment, region, infrastructure_account,
+                             namespace='default'):
     entities = []
 
     statefulsets = get_all(kube_client, kube_client.get_statefulsets, namespace)
@@ -409,7 +411,8 @@ def get_cluster_statefulsets(kube_client, cluster_id, alias, environment, region
     return entities
 
 
-def get_cluster_daemonsets(kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace='default'):
+def get_cluster_daemonsets(kube_client, cluster_id, alias, environment, region, infrastructure_account,
+                           namespace='default'):
     entities = []
 
     daemonsets = get_all(kube_client, kube_client.get_daemonsets, namespace)
@@ -446,7 +449,8 @@ def get_cluster_daemonsets(kube_client, cluster_id, alias, environment, region, 
     return entities
 
 
-def get_cluster_ingresses(kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace='default'):
+def get_cluster_ingresses(kube_client, cluster_id, alias, environment, region, infrastructure_account,
+                          namespace='default'):
     entities = []
 
     ingresses = get_all(kube_client, kube_client.get_ingresses, namespace)
