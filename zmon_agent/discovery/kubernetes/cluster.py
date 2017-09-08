@@ -7,6 +7,8 @@ import sys
 import logging
 import psycopg2
 
+from opentracing_utils import trace
+
 from . import kube
 
 
@@ -81,6 +83,7 @@ class Discovery:
 
         return entity
 
+    @trace()
     def get_entities(self) -> list:
 
         pod_entities = get_cluster_pods(
@@ -128,6 +131,7 @@ class Discovery:
         return all_current_entities
 
 
+@trace()
 def get_all(kube_client, kube_func, namespace=None) -> list:
     items = []
 
@@ -152,6 +156,7 @@ def add_labels_to_entity(entity: dict, labels: dict) -> dict:
     return entity
 
 
+@trace()
 def get_cluster_pods(kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace=None):
     """
     Return all Pods as ZMON entities.
@@ -211,6 +216,7 @@ def get_cluster_pods(kube_client, cluster_id, alias, environment, region, infras
     return entities
 
 
+@trace()
 def get_cluster_services(kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace=None):
     entities = []
 
@@ -258,6 +264,7 @@ def get_cluster_services(kube_client, cluster_id, alias, environment, region, in
     return entities
 
 
+@trace()
 def get_cluster_nodes(
         kube_client, cluster_id, alias, environment, region, infrastructure_account, pod_entities=None, namespace=None):
     entities = []
@@ -327,6 +334,7 @@ def get_cluster_nodes(
     return entities
 
 
+@trace()
 def get_cluster_replicasets(kube_client, cluster_id, alias, environment, region, infrastructure_account,
                             namespace=None):
     entities = []
@@ -365,6 +373,7 @@ def get_cluster_replicasets(kube_client, cluster_id, alias, environment, region,
     return entities
 
 
+@trace()
 def get_cluster_statefulsets(kube_client, cluster_id, alias, environment, region, infrastructure_account,
                              namespace='default'):
     entities = []
@@ -412,6 +421,7 @@ def get_cluster_statefulsets(kube_client, cluster_id, alias, environment, region
     return entities
 
 
+@trace()
 def get_cluster_daemonsets(kube_client, cluster_id, alias, environment, region, infrastructure_account,
                            namespace='default'):
     entities = []
@@ -450,6 +460,7 @@ def get_cluster_daemonsets(kube_client, cluster_id, alias, environment, region, 
     return entities
 
 
+@trace()
 def get_cluster_ingresses(kube_client, cluster_id, alias, environment, region, infrastructure_account,
                           namespace='default'):
     entities = []
@@ -485,6 +496,7 @@ def get_cluster_ingresses(kube_client, cluster_id, alias, environment, region, i
 ########################################################################################################################
 # POSTGRESQL   | TODO: move to separate discovery                                                                      #
 ########################################################################################################################
+@trace()
 def list_postgres_databases(*args, **kwargs):
     logger.info("Trying to list DBs on host: {}".format(kwargs['host']))
 
@@ -505,6 +517,7 @@ def list_postgres_databases(*args, **kwargs):
         return []
 
 
+@trace()
 def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region, infrastructure_account,
                             namespace=None):
     entities = []
@@ -543,6 +556,7 @@ def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region,
     return entities
 
 
+@trace()
 def get_postgresql_cluster_members(kube_client, cluster_id, alias, environment, region, infrastructure_account,
                                    namespace=None):
     entities = []
@@ -596,6 +610,7 @@ def get_postgresql_cluster_members(kube_client, cluster_id, alias, environment, 
     return entities
 
 
+@trace()
 def get_postgresql_databases(postgresql_clusters, cluster_id, alias, environment, region, infrastructure_account,
                              postgres_user, postgres_pass):
     if not (postgres_user and postgres_pass):
