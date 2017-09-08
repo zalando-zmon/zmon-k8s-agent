@@ -146,7 +146,7 @@ def sync(infrastructure_account, region, entity_service, verify, dry_run, interv
 
             logger.info('ZMON agent sleeping for {} seconds ...'.format(interval))
             time.sleep(interval)
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, SystemExit):
             break
         except:
             fail_sleep = interval if interval else 60
