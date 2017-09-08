@@ -11,7 +11,7 @@ COPY . /agent
 
 WORKDIR /agent
 
-RUN pip3 install -U setuptools -e git+https://github.com/zalando-zmon/opentracing-utils.git#egg=opentracing_utils
+RUN pip3 install -U instana setuptools -e git+https://github.com/zalando-zmon/opentracing-utils.git#egg=opentracing_utils
 
 RUN python setup.py install
 
