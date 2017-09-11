@@ -191,7 +191,7 @@ def get_cluster_pods(kube_client, cluster_id, alias, environment, region, infras
             'containers': {
                 c['name']: {
                     'image': c['image'],
-                    'ready': container_statuses.get(c['name'], {}).get('ready', True),
+                    'ready': container_statuses.get(c['name'], {}).get('ready', False),
                     'restarts': container_statuses.get(c['name'], {}).get('restartCount', 0),
                     'ports': [p['containerPort'] for p in c.get('ports', []) if 'containerPort' in p],
                 } for c in containers
