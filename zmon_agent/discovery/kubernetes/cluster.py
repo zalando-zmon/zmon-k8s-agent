@@ -28,13 +28,11 @@ POSTGRESQL_CONNECT_TIMEOUT = os.environ.get('ZMON_AGENT_POSTGRESQL_CONNECT_TIMEO
 
 INSTANCE_TYPE_LABEL = 'beta.kubernetes.io/instance-type'
 
-PROTECTED_FIELDS = ('id', 'type', 'infrastructure_account', 'created_by', 'region')
+PROTECTED_FIELDS = set(('id', 'type', 'infrastructure_account', 'created_by', 'region'))
 
 SERVICE_ACCOUNT_PATH = '/var/run/secrets/kubernetes.io/serviceaccount'
 
-SKIPPED_ANNOTATIONS = (
-    'kubernetes.io/created-by',
-)
+SKIPPED_ANNOTATIONS = set(('kubernetes.io/created-by'))
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(stream=sys.stdout))
@@ -141,13 +139,13 @@ def get_all(kube_client, kube_func, namespace=None) -> list:
 
 def add_labels_to_entity(entity: dict, labels: dict) -> dict:
     for label, val in labels.items():
-        if label in (PROTECTED_FIELDS + SKIPPED_ANNOTATIONS):
-            if label in PROTECTED_FIELDS:
-                logger.warning('Skipping label [{}:{}] as it is in Protected entity fields {}'.format(
-                    label, val, PROTECTED_FIELDS))
-            continue
-
-        entity[label] = val
+        if label in PROTECTED_FIELDS:
+            logger.warning('Skipping label [{}:{}] as it is in Protected entity fields {}'.format(
+                label, val, PROTECTED_FIELDS))
+        elif label in SKIPPED_ANNOTATIONS:
+            pass
+        else:
+            entity[label] = val
 
     return entity
 
