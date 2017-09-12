@@ -13,6 +13,7 @@ from . import kube
 AGENT_TYPE = 'zmon-kubernetes-agent'
 
 POD_TYPE = 'kube_pod'
+CONTAINER_TYPE = 'kube_pod_container'
 SERVICE_TYPE = 'kube_service'
 NODE_TYPE = 'kube_node'
 REPLICASET_TYPE = 'kube_replicaset'
@@ -85,6 +86,8 @@ class Discovery:
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
             namespace=self.namespace)
 
+        container_entities = list(get_container_entities(pod_entities))
+
         # Pass pod_entities in order to get node_pod_count!
         node_entities = get_cluster_nodes(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
@@ -118,7 +121,7 @@ class Discovery:
             self.infrastructure_account, self.postgres_user, self.postgres_pass)
 
         all_current_entities = (
-            pod_entities + node_entities + service_entities + replicaset_entities + daemonset_entities +
+            pod_entities + container_entities + node_entities + service_entities + replicaset_entities + daemonset_entities +
             ingress_entities + statefulset_entities + postgresql_cluster_entities + postgresql_cluster_member_entities +
             postgresql_database_entities
         )
@@ -208,6 +211,26 @@ def get_cluster_pods(kube_client, cluster_id, alias, environment, region, infras
 
     return entities
 
+def get_container_entities(pod_entities):
+    for pod in pod_entities:
+        # Copy properties from the pod. We don't want to copy annotations since they contain
+        # a lot of internal stuff, but everything else could be useful.
+        base = {k: v for k, v in pod.items()
+                     if k != 'containers' and '/' not in k}
+
+        for container_name, container_info in pod['containers'].items():
+            container_entity = base.copy()
+
+            # Add container-specific stuff
+            container_entity.update(
+                id='container-{}-{}-{}[{}]'.format(pod['pod_name'], pod['pod_namespace'], container_name, pod['kube_cluster']),
+                type=CONTAINER_TYPE,
+                container_name=container_name,
+                image=container_info['image'],
+                ready=container_info['ready'],
+                restarts=container_info['restarts'],
+                ports=container_info['ports'])
+            yield container_entity
 
 def get_cluster_services(kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace=None):
     entities = []
