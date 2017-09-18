@@ -82,16 +82,14 @@ class Discovery:
 
     def get_entities(self) -> list:
 
-        pod_entities = get_cluster_pods(
+        pod_container_entities = list(get_cluster_pods_and_containers(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
-            namespace=self.namespace)
-
-        container_entities = list(get_container_entities(pod_entities))
+            namespace=self.namespace))
 
         # Pass pod_entities in order to get node_pod_count!
         node_entities = get_cluster_nodes(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
-            pod_entities, namespace=self.namespace)
+            pod_container_entities, namespace=self.namespace)
 
         service_entities = get_cluster_services(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
@@ -121,7 +119,7 @@ class Discovery:
             self.infrastructure_account, self.postgres_user, self.postgres_pass)
 
         all_current_entities = (
-            pod_entities + container_entities + node_entities + service_entities + replicaset_entities +
+            pod_container_entities + node_entities + service_entities + replicaset_entities +
             daemonset_entities + ingress_entities + statefulset_entities + postgresql_cluster_entities +
             postgresql_cluster_member_entities + postgresql_database_entities
         )
@@ -140,24 +138,26 @@ def get_all(kube_client, kube_func, namespace=None) -> list:
     return items
 
 
-def add_labels_to_entity(entity: dict, labels: dict) -> dict:
-    for label, val in labels.items():
-        if label in PROTECTED_FIELDS:
-            logger.warning('Skipping label [{}:{}] as it is in Protected entity fields {}'.format(
-                label, val, PROTECTED_FIELDS))
-        elif label in SKIPPED_ANNOTATIONS:
-            pass
-        else:
-            entity[label] = val
+def entity_labels(obj: dict, *sources: str) -> dict:
+    result = {}
 
-    return entity
+    for key in sources:
+        for label, val in obj['metadata'].get(key, {}).items():
+            if label in PROTECTED_FIELDS:
+                logger.warning('Skipping label [{}:{}] as it is in Protected entity fields {}'.format(
+                    label, val, PROTECTED_FIELDS))
+            elif label in SKIPPED_ANNOTATIONS:
+                pass
+            else:
+                result[label] = val
+
+    return result
 
 
-def get_cluster_pods(kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace=None):
+def get_cluster_pods_and_containers(kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace=None):
     """
     Return all Pods as ZMON entities.
     """
-    entities = []
 
     pods = get_all(kube_client, kube_client.get_pods, namespace)
 
@@ -171,9 +171,11 @@ def get_cluster_pods(kube_client, cluster_id, alias, environment, region, infras
         container_statuses = {c['name']: c for c in obj['status']['containerStatuses']}
         conditions = {c['type']: c['status'] for c in obj['status']['conditions']}
 
-        entity = {
-            'id': 'pod-{}-{}[{}]'.format(pod.name, pod.namespace, cluster_id),
-            'type': POD_TYPE,
+        pod_labels = entity_labels(obj, 'labels')
+        pod_annotations = entity_labels(obj, 'annotations')
+
+        # Properties shared between pod entity and container entity
+        shared_properties = {
             'kube_cluster': cluster_id,
             'alias': alias,
             'environment': environment,
@@ -189,52 +191,50 @@ def get_cluster_pods(kube_client, cluster_id, alias, environment, region, infras
             'pod_host_ip': obj['status'].get('hostIP', ''),
             'pod_node_name': obj['spec']['nodeName'],
 
-            'containers': {
-                c['name']: {
-                    'image': c['image'],
-                    'ready': container_statuses.get(c['name'], {}).get('ready', False),
-                    'restarts': container_statuses.get(c['name'], {}).get('restartCount', 0),
-                    'ports': [p['containerPort'] for p in c.get('ports', []) if 'containerPort' in p],
-                } for c in containers
-            },
-
             'pod_phase': obj['status'].get('phase'),
             'pod_initialized': conditions.get('Initialized', False),
             'pod_ready': conditions.get('Ready', True),
-            'pod_scheduled': conditions.get('PodScheduled', False),
+            'pod_scheduled': conditions.get('PodScheduled', False)
         }
 
-        entity = add_labels_to_entity(entity, obj['metadata'].get('labels', {}))
-        entity = add_labels_to_entity(entity, obj['metadata'].get('annotations', {}))
+        pod_entity = {
+            'id': 'pod-{}-{}[{}]'.format(pod.name, pod.namespace, cluster_id),
+            'type': POD_TYPE,
+            'containers': {}
+        }
 
-        entities.append(entity)
+        pod_entity.update(shared_properties)
+        pod_entity.update(pod_labels)
+        pod_entity.update(pod_annotations)
 
-    return entities
+        for container in containers:
+            container_name = container['name']
+            container_image = container['image']
+            container_ready = container_statuses.get(container['name'], {}).get('ready', False)
+            container_restarts = container_statuses.get(container['name'], {}).get('restartCount', 0)
+            container_ports = [p['containerPort'] for p in container.get('ports', []) if 'containerPort' in p]
 
+            container_entity = {
+                'id': 'container-{}-{}-{}[{}]'.format(pod.name, pod.namespace, container_name, cluster_id),
+                'type': POD_TYPE,
+                'container_name': container_name,
+                'container_image': container_image,
+                'container_ready': container_ready,
+                'container_restarts': container_restarts,
+                'container_ports': container_ports
+            }
+            pod_entity['containers'][container_name] = {
+                'image': container_image,
+                'ready': container_ready,
+                'restarts': container_restarts,
+                'ports': container_ports
+            }
 
-def get_container_entities(pod_entities):
-    for pod in pod_entities:
-        # Copy properties from the pod. We don't want to copy annotations since they contain
-        # a lot of internal stuff, but everything else could be useful.
-        base = {k: v for k, v in pod.items() if k != 'containers' and '/' not in k}
-
-        for container_name, container_info in pod['containers'].items():
-            container_entity = base.copy()
-
-            # Add container-specific stuff
-            pod_name = pod['pod_name']
-            pod_namespace = pod['pod_namespace']
-            kube_cluster = pod['kube_cluster']
-
-            container_entity.update(
-                id='container-{}-{}-{}[{}]'.format(pod_name, pod_namespace, container_name, kube_cluster),
-                type=CONTAINER_TYPE,
-                container_name=container_name,
-                image=container_info['image'],
-                ready=container_info['ready'],
-                restarts=container_info['restarts'],
-                ports=container_info['ports'])
+            container_entity.update(pod_labels)
+            container_entity.update(shared_properties)
             yield container_entity
+
+        yield pod_entity
 
 
 def get_cluster_services(kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace=None):
@@ -295,9 +295,10 @@ def get_cluster_nodes(
 
     node_pod_count = {}
     for pod in pod_entities:
-        name = pod.get('pod_node_name')
-        if name:
-            node_pod_count[name] = node_pod_count.get(name, 0) + 1
+        if pod['type'] == POD_TYPE:
+            name = pod.get('pod_node_name')
+            if name:
+                node_pod_count[name] = node_pod_count.get(name, 0) + 1
 
     for node in nodes:
         obj = node.obj
@@ -345,8 +346,7 @@ def get_cluster_nodes(
             'node_disk_pressure': statuses.get('DiskPressure', False),
         }
 
-        entity = add_labels_to_entity(entity, obj['metadata'].get('labels', {}))
-        entity = add_labels_to_entity(entity, obj['metadata'].get('annotations', {}))
+        entity.update(entity_labels(obj, 'labels', 'annotations'))
 
         entities.append(entity)
 
@@ -383,8 +383,7 @@ def get_cluster_replicasets(kube_client, cluster_id, alias, environment, region,
             'ready_replicas': obj['status'].get('readyReplicas', 0),
         }
 
-        entity = add_labels_to_entity(entity, obj['metadata'].get('labels', {}))
-        entity = add_labels_to_entity(entity, obj['metadata'].get('annotations', {}))
+        entity.update(entity_labels(obj, 'labels', 'annotations'))
 
         entities.append(entity)
 
@@ -430,8 +429,7 @@ def get_cluster_statefulsets(kube_client, cluster_id, alias, environment, region
             'replicas_status': obj['status'].get('replicas'),
         }
 
-        entity = add_labels_to_entity(entity, obj['metadata'].get('labels', {}))
-        entity = add_labels_to_entity(entity, obj['metadata'].get('annotations', {}))
+        entity.update(entity_labels(obj, 'labels', 'annotations'))
 
         entities.append(entity)
 
@@ -468,8 +466,7 @@ def get_cluster_daemonsets(kube_client, cluster_id, alias, environment, region, 
             'current_count': obj['status'].get('currentNumberScheduled', 0),
         }
 
-        entity = add_labels_to_entity(entity, obj['metadata'].get('labels', {}))
-        entity = add_labels_to_entity(entity, obj['metadata'].get('annotations', {}))
+        entity.update(entity_labels(obj, 'labels', 'annotations'))
 
         entities.append(entity)
 
@@ -501,7 +498,7 @@ def get_cluster_ingresses(kube_client, cluster_id, alias, environment, region, i
             'ingress_rules': obj['spec'].get('rules', [])
         }
 
-        entity = add_labels_to_entity(entity, obj['metadata'].get('labels', {}))
+        entity.update(entity_labels(obj, 'labels'))
 
         entities.append(entity)
 
