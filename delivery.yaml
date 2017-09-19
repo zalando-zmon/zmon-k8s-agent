@@ -12,7 +12,6 @@ build_steps:
       libssl-dev \
       tox
     curl -sSL https://get.docker.com/ | sh
-    pip3 install -r requirements.txt
     pip3 install -U flake8
 
 - desc: "Flake 8"
@@ -21,14 +20,18 @@ build_steps:
 
 - desc: "Build Docker Image"
   cmd: |
-    docker build -t registry-write.opensource.zalan.do/zmon/zmon-agent-core:0.1-a29 .
+    docker build -t registry-write.opensource.zalan.do/zmon/zmon-agent-core:0.1-ot-#{CDP_BUILD_VERSION} .
 
-- desc: "Push Docker Image (if on master) - trigger"
+- desc: "Push Docker Image with OpenTracing support"
   cmd: |
-    IS_PR_BUILD=${CDP_PULL_REQUEST_NUMBER+"true"}
-    if [[ ${IS_PR_BUILD} != "true" ]]
-    then
-      docker push registry-write.opensource.zalan.do/zmon/zmon-agent-core:0.1-a29
-    else
-      echo "Image not pushed because the build is not a push to master"
-    fi
+    docker push registry-write.opensource.zalan.do/zmon/zmon-agent-core:0.1-ot-#{CDP_BUILD_VERSION}
+
+# - desc: "Push Docker Image (if on master) - trigger"
+#   cmd: |
+#     IS_PR_BUILD=${CDP_PULL_REQUEST_NUMBER+"true"}
+#     if [[ ${IS_PR_BUILD} != "true" ]]
+#     then
+#       docker push registry-write.opensource.zalan.do/zmon/zmon-agent-core:0.1-a29
+#     else
+#       echo "Image not pushed because the build is not a push to master"
+#     fi
