@@ -42,7 +42,6 @@ def get_clients(zmon_url, verify=True) -> Zmon:
     return Zmon(zmon_url, token=zmon_token, verify=verify)
 
 
-@trace()
 def get_existing_ids(existing_entities):
     return [entity['id'] for entity in existing_entities]
 
@@ -65,7 +64,6 @@ def remove_missing_entities(existing_ids, current_ids, zmon_client, dry_run=Fals
     return to_be_removed_ids, error_count
 
 
-@trace()
 def new_or_updated_entity(entity, existing_entities_dict):
     # check if new entity
     if entity['id'] not in existing_entities_dict:
