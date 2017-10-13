@@ -103,9 +103,6 @@ def sync(infrastructure_account, region, entity_service, verify, dry_run, interv
     Discovery = get_discovery_agent_class()
     discovery = Discovery(region, infrastructure_account)
 
-    dummy_span = opentracing.tracer.start_span(operation_name='zmon-agent-sync-dummy')
-    time.sleep(5)
-    dummy_span.finish()
     while True:
         try:
             sync_span = opentracing.tracer.start_span(operation_name='zmon-agent-sync')
@@ -225,6 +222,13 @@ def main():
 
     logger.info('Initializing opentracing tracer: {}'.format(args.opentracing))
     init_opentracing_tracer(args.opentracing, debug_level)
+
+    # sleep until tracer is ready
+    time.sleep(10)
+
+    dummy_span = opentracing.tracer.start_span(operation_name='zmon-agent-sync-dummy')
+    with dummy_span:
+        time.sleep(5)
 
     verify = True
     if args.skip_ssl:
