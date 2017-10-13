@@ -224,7 +224,17 @@ def main():
     init_opentracing_tracer(args.opentracing, debug_level)
 
     # sleep until tracer is ready
-    time.sleep(10)
+    seconds = 60
+    while seconds:
+        try:
+            if opentracing.tracer.sensor.agent.fsm.fsm.current == "good2go":
+                logger.info('Tracer is ready and announced!')
+                break
+            seconds -= 1
+            time.sleep(2)
+        except:
+            logger.exception('No tracer!')
+            break
 
     dummy_span = opentracing.tracer.start_span(operation_name='zmon-agent-sync-dummy')
     with dummy_span:
