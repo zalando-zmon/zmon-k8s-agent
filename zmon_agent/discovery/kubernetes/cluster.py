@@ -8,6 +8,8 @@ import sys
 import logging
 import psycopg2
 
+from opentracing_utils import trace
+
 from . import kube
 
 
@@ -81,6 +83,7 @@ class Discovery:
 
         return entity
 
+    @trace()
     def get_entities(self) -> list:
 
         pod_container_entities = list(get_cluster_pods_and_containers(
@@ -125,6 +128,7 @@ class Discovery:
             postgresql_cluster_member_entities, postgresql_database_entities))
 
 
+@trace()
 def get_all(kube_client, kube_func, namespace=None) -> list:
     items = []
 
@@ -152,8 +156,8 @@ def entity_labels(obj: dict, *sources: str) -> dict:
     return result
 
 
-def get_cluster_pods_and_containers(
-        kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace=None):
+@trace()
+def get_cluster_pods(kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace=None):
     """
     Return all Pods as ZMON entities.
     """
@@ -235,7 +239,7 @@ def get_cluster_pods_and_containers(
 
         yield pod_entity
 
-
+@trace()
 def get_cluster_services(kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace=None):
     endpoints = get_all(kube_client, kube_client.get_endpoints, namespace)
     # number of endpoints per service
@@ -277,6 +281,7 @@ def get_cluster_services(kube_client, cluster_id, alias, environment, region, in
         }
 
 
+@trace()
 def get_cluster_nodes(
         kube_client, cluster_id, alias, environment, region, infrastructure_account, pod_entities=None, namespace=None):
     nodes = kube_client.get_nodes()
@@ -342,6 +347,7 @@ def get_cluster_nodes(
         yield entity
 
 
+@trace()
 def get_cluster_replicasets(kube_client, cluster_id, alias, environment, region, infrastructure_account,
                             namespace=None):
     replicasets = get_all(kube_client, kube_client.get_replicasets, namespace)
@@ -375,6 +381,7 @@ def get_cluster_replicasets(kube_client, cluster_id, alias, environment, region,
         yield entity
 
 
+@trace()
 def get_cluster_statefulsets(kube_client, cluster_id, alias, environment, region, infrastructure_account,
                              namespace='default'):
     statefulsets = get_all(kube_client, kube_client.get_statefulsets, namespace)
@@ -417,6 +424,7 @@ def get_cluster_statefulsets(kube_client, cluster_id, alias, environment, region
         yield entity
 
 
+@trace()
 def get_cluster_daemonsets(kube_client, cluster_id, alias, environment, region, infrastructure_account,
                            namespace='default'):
     daemonsets = get_all(kube_client, kube_client.get_daemonsets, namespace)
@@ -450,6 +458,7 @@ def get_cluster_daemonsets(kube_client, cluster_id, alias, environment, region, 
         yield entity
 
 
+@trace()
 def get_cluster_ingresses(kube_client, cluster_id, alias, environment, region, infrastructure_account,
                           namespace='default'):
     ingresses = get_all(kube_client, kube_client.get_ingresses, namespace)
@@ -481,6 +490,7 @@ def get_cluster_ingresses(kube_client, cluster_id, alias, environment, region, i
 ########################################################################################################################
 # POSTGRESQL   | TODO: move to separate discovery                                                                      #
 ########################################################################################################################
+@trace()
 def list_postgres_databases(*args, **kwargs):
     logger.info("Trying to list DBs on host: {}".format(kwargs['host']))
 
@@ -501,6 +511,7 @@ def list_postgres_databases(*args, **kwargs):
         return []
 
 
+@trace()
 def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region, infrastructure_account,
                             namespace=None):
     services = get_all(kube_client, kube_client.get_services, namespace)
@@ -533,6 +544,7 @@ def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region,
         }
 
 
+@trace()
 def get_postgresql_cluster_members(kube_client, cluster_id, alias, environment, region, infrastructure_account,
                                    namespace=None):
     pods = get_all(kube_client, kube_client.get_pods, namespace)
@@ -580,6 +592,7 @@ def get_postgresql_cluster_members(kube_client, cluster_id, alias, environment, 
         }
 
 
+@trace()
 def get_postgresql_databases(postgresql_clusters, cluster_id, alias, environment, region, infrastructure_account,
                              postgres_user, postgres_pass):
     if not (postgres_user and postgres_pass):
