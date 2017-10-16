@@ -19,6 +19,14 @@ build_steps:
   cmd: |
     flake8 .
 
+- desc: "Build Docker Image"
+  cmd: |
+    docker build -t registry-write.opensource.zalan.do/zmon/zmon-agent-core:0.1-ot-#{CDP_BUILD_VERSION} .
+
+- desc: "Push Docker Image with OpenTracing support"
+  cmd: |
+    docker push registry-write.opensource.zalan.do/zmon/zmon-agent-core:0.1-ot-#{CDP_BUILD_VERSION}
+
 - desc: "Push Docker Image (if on master) - trigger"
   cmd: |
     IS_PR_BUILD=${CDP_PULL_REQUEST_NUMBER+"true"}
