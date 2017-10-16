@@ -157,7 +157,8 @@ def entity_labels(obj: dict, *sources: str) -> dict:
 
 
 @trace()
-def get_cluster_pods(kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace=None):
+def get_cluster_pods_and_containers(
+        kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace=None):
     """
     Return all Pods as ZMON entities.
     """
