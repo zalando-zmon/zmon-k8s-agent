@@ -1,3 +1,6 @@
+from opentracing_utils import trace_requests
+trace_requests()  # noqa
+
 import os
 import sys
 import time
@@ -7,11 +10,15 @@ import json
 
 import requests
 import tokens
+import opentracing
 
 from zmon_cli.client import Zmon, compare_entities
 
 # TODO: Load dynamically
 from zmon_agent.discovery.kubernetes import get_discovery_agent_class
+from zmon_agent.tracing import init_opentracing_tracer
+
+from opentracing_utils import trace
 
 
 BUILTIN_DISCOVERY = ('kubernetes',)
@@ -39,6 +46,7 @@ def get_existing_ids(existing_entities):
     return [entity['id'] for entity in existing_entities]
 
 
+@trace()
 def remove_missing_entities(existing_ids, current_ids, zmon_client, dry_run=False):
     to_be_removed_ids = list(set(existing_ids) - set(current_ids))
 
@@ -66,6 +74,7 @@ def new_or_updated_entity(entity, existing_entities_dict):
     return not compare_entities(entity, existing_entities_dict[entity['id']])
 
 
+@trace()
 def add_new_entities(all_current_entities, existing_entities, zmon_client, dry_run=False):
     existing_entities_dict = {e['id']: e for e in existing_entities}
     new_entities = [e for e in all_current_entities if new_or_updated_entity(e, existing_entities_dict)]
@@ -96,57 +105,61 @@ def sync(infrastructure_account, region, entity_service, verify, dry_run, interv
 
     while True:
         try:
-            zmon_client = get_clients(entity_service, verify=verify)
+            sync_span = opentracing.tracer.start_span(operation_name='zmon-agent-sync')
 
-            account_entity = discovery.get_account_entity()
+            with sync_span:
+                zmon_client = get_clients(entity_service, verify=verify)
 
-            all_current_entities = discovery.get_entities() + [account_entity]
+                account_entity = discovery.get_account_entity()
 
-            # ZMON entities
-            query = discovery.get_filter_query()
-            existing_entities = zmon_client.get_entities(query=query)
+                all_current_entities = discovery.get_entities() + [account_entity]
 
-            # Remove non-existing entities
-            existing_ids = get_existing_ids(existing_entities)
+                # ZMON entities
+                query = discovery.get_filter_query()
+                existing_entities = zmon_client.get_entities(query=query)
 
-            current_ids = [entity['id'] for entity in all_current_entities]
+                # Remove non-existing entities
+                existing_ids = get_existing_ids(existing_entities)
 
-            to_be_removed_ids, delete_err = remove_missing_entities(
-                existing_ids, current_ids, zmon_client, dry_run=dry_run)
+                current_ids = [entity['id'] for entity in all_current_entities]
 
-            # Add new entities
-            new_entities, add_err = add_new_entities(
-                all_current_entities, existing_entities, zmon_client, dry_run=dry_run)
+                to_be_removed_ids, delete_err = remove_missing_entities(
+                    existing_ids, current_ids, zmon_client, dry_run=dry_run)
 
-            logger.info('Found {} new entities from {} entities ({} failed)'.format(
-                len(new_entities), len(all_current_entities), add_err))
+                # Add new entities
+                new_entities, add_err = add_new_entities(
+                    all_current_entities, existing_entities, zmon_client, dry_run=dry_run)
 
-            # Add account entity - always!
-            if not dry_run:
-                try:
-                    account_entity['errors'] = {'delete_count': delete_err, 'add_count': add_err}
-                    zmon_client.add_entity(account_entity)
-                except:
-                    logger.exception('Failed to add account entity!')
+                logger.info('Found {} new entities from {} entities ({} failed)'.format(
+                    len(new_entities), len(all_current_entities), add_err))
 
-            logger.info(
-                'ZMON agent completed sync with {} addition errors and {} deletion errors'.format(add_err, delete_err))
+                # Add account entity - always!
+                if not dry_run:
+                    try:
+                        account_entity['errors'] = {'delete_count': delete_err, 'add_count': add_err}
+                        zmon_client.add_entity(account_entity)
+                    except:
+                        logger.exception('Failed to add account entity!')
 
-            if dry_run:
-                output = {
-                    'to_be_removed_ids': to_be_removed_ids,
-                    'new_entities': new_entities
-                }
+                logger.info(
+                    'ZMON agent completed sync with {} addition errors and {} deletion errors'.format(
+                        add_err, delete_err))
 
-                print(json.dumps(output, indent=4))
+                if dry_run:
+                    output = {
+                        'to_be_removed_ids': to_be_removed_ids,
+                        'new_entities': new_entities
+                    }
 
-            if not interval:
-                logger.info('ZMON agent running once. Exiting!')
-                break
+                    print(json.dumps(output, indent=4))
+
+                if not interval:
+                    logger.info('ZMON agent running once. Exiting!')
+                    break
 
             logger.info('ZMON agent sleeping for {} seconds ...'.format(interval))
             time.sleep(interval)
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, SystemExit):
             break
         except:
             fail_sleep = interval if interval else 60
@@ -175,6 +188,8 @@ def main():
                       help='Interval for agent sync. If not set then agent will run once. Can be set via '
                       'ZMON_AGENT_INTERVAL env variable.')
 
+    argp.add_argument('--opentracing', dest='opentracing', default=os.environ.get('AGENT_OPENTRACING'))
+
     argp.add_argument('-j', '--json', dest='json', action='store_true', help='Print JSON output only.', default=False)
     argp.add_argument('--skip-ssl', dest='skip_ssl', action='store_true', default=False)
     argp.add_argument('-v', '--verbose', dest='verbose', action='store_true', default=False, help='Verbose output.')
@@ -200,8 +215,37 @@ def main():
     tokens.manage('uid', ['uid'])
 
     verbose = args.verbose if args.verbose else os.environ.get('ZMON_AGENT_DEBUG', False)
+    debug_level = logging.INFO
     if verbose:
+        debug_level = logging.DEBUG
         logger.setLevel(logging.DEBUG)
+
+    logger.info('Initializing opentracing tracer: {}'.format(args.opentracing))
+    init_opentracing_tracer(args.opentracing, debug_level)
+
+    # sleep until tracer is ready
+    seconds = 120
+    while seconds:
+        try:
+            if opentracing.tracer.sensor.agent.fsm.fsm.current == "good2go":
+                logger.info('Tracer is ready and announced!')
+                break
+            seconds -= 1
+            time.sleep(2)
+        except:
+            logger.exception('No tracer!')
+            break
+
+    dummy_span = opentracing.tracer.start_span(operation_name='zmon-agent-sync-dummy')
+    with dummy_span:
+        logger.info('Dummy span started!')
+        dummy_span.set_tag('zmon-agent-dummy-status', 'STARTED')
+        time.sleep(5)
+        logger.info('Dummy span done!')
+
+    time.sleep(10)
+
+    logger.info('Starting sync operations!')
 
     verify = True
     if args.skip_ssl:
@@ -212,7 +256,8 @@ def main():
         # Assuming running on AWS
         logger.info('Trying to figure out region ...')
         try:
-            response = requests.get('http://169.254.169.254/latest/meta-data/placement/availability-zone', timeout=2)
+            response = requests.get(
+                'http://169.254.169.254/latest/meta-data/placement/availability-zone', timeout=2)
 
             response.raise_for_status()
 
