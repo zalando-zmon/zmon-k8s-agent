@@ -224,7 +224,7 @@ def main():
     init_opentracing_tracer(args.opentracing, debug_level)
 
     # sleep until tracer is ready
-    seconds = 60
+    seconds = 120
     while seconds:
         try:
             if opentracing.tracer.sensor.agent.fsm.fsm.current == "good2go":
@@ -238,7 +238,14 @@ def main():
 
     dummy_span = opentracing.tracer.start_span(operation_name='zmon-agent-sync-dummy')
     with dummy_span:
+        logger.info('Dummy span started!')
+        dummy_span.set_tag('zmon-agent-dummy-status', 'STARTED')
         time.sleep(5)
+        logger.info('Dummy span done!')
+
+    time.sleep(10)
+
+    logger.info('Starting sync operations!')
 
     verify = True
     if args.skip_ssl:
