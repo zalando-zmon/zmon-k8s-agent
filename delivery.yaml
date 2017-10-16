@@ -40,10 +40,7 @@ build_steps:
     docker build --tag "$AGENT_IMAGE" .
     docker push "$AGENT_IMAGE"
 
-- desc: "Build Docker Image"
+- desc: "Build Docker Image with OpenTracing support"
   cmd: |
     docker build -t registry-write.opensource.zalan.do/zmon/zmon-agent-core:0.1-ot-#{CDP_BUILD_VERSION} .
-
-- desc: "Push Docker Image with OpenTracing support"
-  cmd: |
     docker push registry-write.opensource.zalan.do/zmon/zmon-agent-core:0.1-ot-#{CDP_BUILD_VERSION}
