@@ -509,7 +509,7 @@ def get_postgresql_clusters(kube_client, cluster_id, alias, region, infrastructu
             'id': 'pg-{}[{}]'.format(service.name, cluster_id),
             'type': POSTGRESQL_CLUSTER_TYPE,
             'kube_cluster': cluster_id,
-            'alias': alias,
+            'account_alias': alias,
             'created_by': AGENT_TYPE,
             'infrastructure_account': infrastructure_account,
             'region': region,
@@ -545,6 +545,10 @@ def get_postgresql_cluster_members(kube_client, cluster_id, alias, region, infra
         pod_namespace = obj['metadata']['namespace']
         service_dns_name = '{}.{}.svc.cluster.local'.format(labels['version'], pod_namespace)
 
+        container = obj['spec']['containers'][0]  # we don't assume more than one container
+        cluster_name = [env['value'] for env in container['env'] if env['name'] == 'SCOPE'][0]
+
+        ebs_volume_id = ''
         # unfortunately, there appears to be no way of filtering these on the server side :(
         try:
             pvc_name = obj['spec']['volumes'][0]['persistentVolumeClaim']['claimName']  # assume only one PVC
@@ -555,22 +559,26 @@ def get_postgresql_cluster_members(kube_client, cluster_id, alias, region, infra
                             ebs_volume_id = pv.obj['spec']['awsElasticBlockStore']['volumeID'].split('/')[-1]
                             break  # only one matching item is expected, so when found, we can leave the loop
                     break
-        except:
-            ebs_volume_id = ''
+        except KeyError:
+            pass
 
         entity = {
             'id': 'pg-{}-{}[{}]'.format(service_dns_name, pod_number, cluster_id),
             'type': POSTGRESQL_CLUSTER_MEMBER_TYPE,
             'kube_cluster': cluster_id,
-            'alias': alias,
+            'account_alias': alias,
             'created_by': AGENT_TYPE,
             'infrastructure_account': infrastructure_account,
             'region': region,
-
-            'dnsname': service_dns_name,
+            'cluster_dns_name': service_dns_name,
             'pod': pod.name,
-            'volume': ebs_volume_id,
-            'role': labels.get('spilo-role')
+            'pod_phase': obj['status']['phase'],
+            'image': container['image'],
+            'container_name': container['name'],
+            'ip': obj['status']['podIP'],
+            'spilo_cluster': cluster_name,
+            'spilo-role': labels.get('spilo-role', ''),
+            'volume': ebs_volume_id
         }
 
         entities.append(entity)
