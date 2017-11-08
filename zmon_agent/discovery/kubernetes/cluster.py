@@ -569,7 +569,8 @@ def get_postgresql_cluster_members(kube_client, cluster_id, alias, region, infra
 
             'dnsname': service_dns_name,
             'pod': pod.name,
-            'volume': ebs_volume_id
+            'volume': ebs_volume_id,
+            'role': labels.get('spilo-role')
         }
 
         entities.append(entity)
