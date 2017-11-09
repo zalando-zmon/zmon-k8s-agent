@@ -17,7 +17,6 @@ POD_TYPE = 'kube_pod'
 CONTAINER_TYPE = 'kube_pod_container'
 SERVICE_TYPE = 'kube_service'
 NODE_TYPE = 'kube_node'
-REPLICASET_TYPE = 'kube_replicaset'
 STATEFULSET_TYPE = 'kube_statefulset'
 DAEMONSET_TYPE = 'kube_daemonset'
 INGRESS_TYPE = 'kube_ingress'
@@ -95,9 +94,6 @@ class Discovery:
         service_entities = get_cluster_services(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
             namespace=self.namespace)
-        replicaset_entities = get_cluster_replicasets(
-            self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
-            namespace=self.namespace)
         daemonset_entities = get_cluster_daemonsets(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
             namespace=self.namespace)
@@ -120,7 +116,7 @@ class Discovery:
             self.infrastructure_account, self.postgres_user, self.postgres_pass)
 
         return list(itertools.chain(
-            pod_container_entities, node_entities, service_entities, replicaset_entities,
+            pod_container_entities, node_entities, service_entities,
             daemonset_entities, ingress_entities, statefulset_entities, postgresql_cluster_entities,
             postgresql_cluster_member_entities, postgresql_database_entities))
 
@@ -335,39 +331,6 @@ def get_cluster_nodes(
             'node_out_of_disk': statuses.get('OutOfDisk', False),
             'node_memory_pressure': statuses.get('MemoryPressure', False),
             'node_disk_pressure': statuses.get('DiskPressure', False),
-        }
-
-        entity.update(entity_labels(obj, 'labels', 'annotations'))
-
-        yield entity
-
-
-def get_cluster_replicasets(kube_client, cluster_id, alias, environment, region, infrastructure_account,
-                            namespace=None):
-    replicasets = get_all(kube_client, kube_client.get_replicasets, namespace)
-
-    for replicaset in replicasets:
-        obj = replicaset.obj
-
-        containers = obj['spec']['template']['spec']['containers']
-
-        entity = {
-            'id': 'replicaset-{}-{}[{}]'.format(replicaset.name, replicaset.namespace, cluster_id),
-            'type': REPLICASET_TYPE,
-            'kube_cluster': cluster_id,
-            'alias': alias,
-            'environment': environment,
-            'created_by': AGENT_TYPE,
-            'infrastructure_account': infrastructure_account,
-            'region': region,
-
-            'replicaset_name': replicaset.name,
-            'replicaset_namespace': obj['metadata']['namespace'],
-
-            'containers': {c['name']: c.get('image', '') for c in containers if 'name' in c},
-
-            'replicas': obj['spec'].get('replicas', 0),
-            'ready_replicas': obj['status'].get('readyReplicas', 0),
         }
 
         entity.update(entity_labels(obj, 'labels', 'annotations'))
