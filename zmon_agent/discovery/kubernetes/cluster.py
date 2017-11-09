@@ -584,7 +584,7 @@ def get_postgresql_cluster_members(kube_client, cluster_id, alias, environment, 
             'container_name': container['name'],
             'ip': obj['status']['podIP'],
             'spilo_cluster': cluster_name,
-            'spilo-role': labels.get('spilo-role', ''),
+            'spilo_role': labels.get('spilo-role', ''),
             'volume': ebs_volume_id
         }
 
