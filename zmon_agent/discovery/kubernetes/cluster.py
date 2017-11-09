@@ -504,7 +504,7 @@ def list_postgres_databases(*args, **kwargs):
 def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region, infrastructure_account,
                             namespace=None):
 
-    #TODO in theory clusters should be discovered using CRDs
+    # TODO in theory clusters should be discovered using CRDs
     services = get_all(kube_client, kube_client.get_services, namespace)
 
     for service in services:
