@@ -276,11 +276,7 @@ def get_cluster_services(kube_client, cluster_id, alias, environment, region, in
             'endpoints_count': endpoints_map.get(service.name, 0),
         }
 
-        if "application" in obj["metadata"]["labels"]:
-            entity["application"] = obj["metadata"]["labels"]["application"]
-
-        if "version" in obj["metadata"]["labels"]:
-            entity["version"] = obj["metadata"]["labels"]["version"]
+        entity.update(entity_labels(obj, 'labels', 'annotations'))
 
         yield entity
 
