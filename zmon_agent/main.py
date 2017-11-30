@@ -16,9 +16,8 @@ from zmon_cli.client import Zmon, compare_entities
 
 # TODO: Load dynamically
 from zmon_agent.discovery.kubernetes import get_discovery_agent_class
-from zmon_agent.tracing import init_opentracing_tracer
 
-from opentracing_utils import trace
+from opentracing_utils import init_opentracing_tracer, trace
 
 
 BUILTIN_DISCOVERY = ('kubernetes',)
