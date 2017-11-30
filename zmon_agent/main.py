@@ -91,7 +91,7 @@ def add_new_entities(all_current_entities, existing_entities, zmon_client, dry_r
                 resp = zmon_client.add_entity(entity)
 
                 resp.raise_for_status()
-        except:
+        except Exception:
             logger.exception('Failed to add entity!')
             error_count += 1
 
@@ -138,7 +138,7 @@ def sync(infrastructure_account, region, entity_service, verify, dry_run, interv
                     try:
                         account_entity['errors'] = {'delete_count': delete_err, 'add_count': add_err}
                         zmon_client.add_entity(account_entity)
-                    except:
+                    except Exception:
                         logger.exception('Failed to add account entity!')
 
                 logger.info(
@@ -161,7 +161,7 @@ def sync(infrastructure_account, region, entity_service, verify, dry_run, interv
             time.sleep(interval)
         except (KeyboardInterrupt, SystemExit):
             break
-        except:
+        except Exception:
             fail_sleep = interval if interval else 60
             logger.exception('ZMON agent failed. Retrying after {} seconds ...'.format(fail_sleep))
             time.sleep(fail_sleep)
@@ -189,6 +189,16 @@ def main():
                       'ZMON_AGENT_INTERVAL env variable.')
 
     argp.add_argument('--opentracing', dest='opentracing', default=os.environ.get('AGENT_OPENTRACING'))
+    argp.add_argument('--opentracing-key', dest='opentracing_key', default=os.environ.get('AGENT_OPENTRACING_KEY'),
+                      help='Opentracing access key if required.')
+    argp.add_argument('--opentracing-host', dest='opentracing_host', default=os.environ.get('AGENT_OPENTRACING_HOST'),
+                      help='Opentracing collector host if required.')
+    argp.add_argument('--opentracing-port', dest='opentracing_port',
+                      default=os.environ.get('AGENT_OPENTRACING_PORT', 443),
+                      help='Opentracing collector port if required.')
+    argp.add_argument('--opentracing-verbosity', dest='opentracing_verbosity',
+                      default=os.environ.get('AGENT_OPENTRACING_VERBOSITY', 0),
+                      help='Opentracing tracer verbosity.')
 
     argp.add_argument('-j', '--json', dest='json', action='store_true', help='Print JSON output only.', default=False)
     argp.add_argument('--skip-ssl', dest='skip_ssl', action='store_true', default=False)
@@ -215,35 +225,14 @@ def main():
     tokens.manage('uid', ['uid'])
 
     verbose = args.verbose if args.verbose else os.environ.get('ZMON_AGENT_DEBUG', False)
-    debug_level = logging.INFO
     if verbose:
-        debug_level = logging.DEBUG
         logger.setLevel(logging.DEBUG)
 
     logger.info('Initializing opentracing tracer: {}'.format(args.opentracing))
-    init_opentracing_tracer(args.opentracing, debug_level)
-
-    # sleep until tracer is ready
-    seconds = 120
-    while seconds:
-        try:
-            if opentracing.tracer.sensor.agent.fsm.fsm.current == "good2go":
-                logger.info('Tracer is ready and announced!')
-                break
-            seconds -= 1
-            time.sleep(2)
-        except:
-            logger.exception('No tracer!')
-            break
-
-    dummy_span = opentracing.tracer.start_span(operation_name='zmon-agent-sync-dummy')
-    with dummy_span:
-        logger.info('Dummy span started!')
-        dummy_span.set_tag('zmon-agent-dummy-status', 'STARTED')
-        time.sleep(5)
-        logger.info('Dummy span done!')
-
-    time.sleep(10)
+    init_opentracing_tracer(
+        args.opentracing, component_name='zmon-agent', access_token=args.opentracing_key,
+        collector_host=args.opentracing_host, collector_port=int(args.opentracing_host),
+        verbosity=args.opentracing_verbosity)
 
     logger.info('Starting sync operations!')
 
@@ -262,11 +251,17 @@ def main():
             response.raise_for_status()
 
             region = response.text[:-1]
-        except:
+        except Exception:
             logger.error('AWS region was not specified and can not be fetched from instance meta-data!')
             raise
 
     sync(infrastructure_account, region, entity_service, verify, args.json, interval)
+
+    # make sure we send any buffered spans
+    try:
+        opentracing.tracer.flush()
+    except Exception:
+        pass
 
 
 if __name__ == '__main__':
