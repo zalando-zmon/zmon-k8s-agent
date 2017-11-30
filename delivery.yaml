@@ -19,28 +19,20 @@ build_steps:
   cmd: |
     flake8 .
 
-- desc: "Build Docker Image"
-  cmd: |
-    docker build -t registry-write.opensource.zalan.do/zmon/zmon-agent-core:0.1-ot-#{CDP_BUILD_VERSION} .
-
-- desc: "Push Docker Image with OpenTracing support"
-  cmd: |
-    docker push registry-write.opensource.zalan.do/zmon/zmon-agent-core:0.1-ot-#{CDP_BUILD_VERSION}
-
-- desc: "Push Docker Image (if on master) - trigger"
-  cmd: |
-    IS_PR_BUILD=${CDP_PULL_REQUEST_NUMBER+"true"}
-    if [[ ${IS_PR_BUILD} != "true" ]]
-    then
-      RELEASE_VERSION=$(git describe --tags --always --dirty)
-      AGENT_IMAGE=registry-write.opensource.zalan.do/zmon/zmon-agent-core:${RELEASE_VERSION}
-    else
-      AGENT_IMAGE=registry-write.opensource.zalan.do/zmon/zmon-agent-core:${CDP_BUILD_VERSION}
-    fi
-    docker build --tag "$AGENT_IMAGE" .
-    docker push "$AGENT_IMAGE"
+# - desc: "Push Docker Image (if on master) - trigger"
+#   cmd: |
+#     IS_PR_BUILD=${CDP_PULL_REQUEST_NUMBER+"true"}
+#     if [[ ${IS_PR_BUILD} != "true" ]]
+#     then
+#       RELEASE_VERSION=$(git describe --tags --always --dirty)
+#       AGENT_IMAGE=registry-write.opensource.zalan.do/zmon/zmon-agent-core:${RELEASE_VERSION}
+#     else
+#       AGENT_IMAGE=registry-write.opensource.zalan.do/zmon/zmon-agent-core:${CDP_BUILD_VERSION}
+#     fi
+#     docker build --tag "$AGENT_IMAGE" .
+#     docker push "$AGENT_IMAGE"
 
 - desc: "Build Docker Image with OpenTracing support"
   cmd: |
-    docker build -t registry-write.opensource.zalan.do/zmon/zmon-agent-core:0.1-ot-#{CDP_BUILD_VERSION} .
-    docker push registry-write.opensource.zalan.do/zmon/zmon-agent-core:0.1-ot-#{CDP_BUILD_VERSION}
+    docker build -t registry-write.opensource.zalan.do/zmon/zmon-agent-core:0.1-ot-ls-#{CDP_BUILD_VERSION} .
+    docker push registry-write.opensource.zalan.do/zmon/zmon-agent-core:0.1-ot-ls-#{CDP_BUILD_VERSION}
