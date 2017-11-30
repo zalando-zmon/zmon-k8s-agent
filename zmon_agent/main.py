@@ -231,7 +231,7 @@ def main():
     logger.info('Initializing opentracing tracer: {}'.format(args.opentracing))
     init_opentracing_tracer(
         args.opentracing, component_name='zmon-agent', access_token=args.opentracing_key,
-        collector_host=args.opentracing_host, collector_port=int(args.opentracing_host),
+        collector_host=args.opentracing_host, collector_port=int(args.opentracing_port),
         verbosity=args.opentracing_verbosity)
 
     logger.info('Starting sync operations!')
