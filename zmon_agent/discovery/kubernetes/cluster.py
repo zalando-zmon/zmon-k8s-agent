@@ -111,10 +111,10 @@ class Discovery:
 
         postgresql_cluster_entities = get_postgresql_clusters(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
-            namespace=self.namespace)
+            self.hosted_zone_format_string, namespace=self.namespace)
         postgresql_cluster_member_entities = get_postgresql_cluster_members(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
-            namespace=self.namespace)
+            self.hosted_zone_format_string, namespace=self.namespace)
         postgresql_database_entities = get_postgresql_databases(
             postgresql_cluster_entities, self.cluster_id, self.alias, self.environment, self.region,
             self.infrastructure_account, self.postgres_user, self.postgres_pass)
@@ -506,7 +506,7 @@ def list_postgres_databases(*args, **kwargs):
 
 
 def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region, infrastructure_account,
-                            namespace=None):
+                            hosted_zone, namespace=None):
 
     # TODO in theory clusters should be discovered using CRDs
     services = get_all(kube_client, kube_client.get_services, namespace)
@@ -543,12 +543,12 @@ def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region,
             'shards': {
                 'postgres': '{}:{}/postgres'.format(service_dns_name, POSTGRESQL_DEFAULT_PORT)
             },
-            'deeplink1' : '{}/#/clusters/{}'.format(self.hosted_zone_format_string.format('pgui', alias), labels.get('version'))
+            'deeplink1' : '{}/#/clusters/{}'.format(hosted_zone.format('pgui', alias), labels.get('version'))
         }
 
 
 def get_postgresql_cluster_members(kube_client, cluster_id, alias, environment, region, infrastructure_account,
-                                   namespace=None):
+                                   hosted_zone, namespace=None):
     pods = get_all(kube_client, kube_client.get_pods, namespace)
     pvcs = get_all(kube_client, kube_client.get_persistentvolumeclaims, namespace)
     pvs = get_all(kube_client, kube_client.get_persistentvolumes)
@@ -602,7 +602,7 @@ def get_postgresql_cluster_members(kube_client, cluster_id, alias, environment, 
             'application': 'spilo',
             'version': cluster_name,
             'volume': ebs_volume_id,
-            'deeplink1' : '{}/#/clusters/{}/{}'.format(self.hosted_zone_format_string.format('pgui', alias), cluster_name, pod.name)
+            'deeplink1' : '{}/#/clusters/{}/{}'.format(hosted_zone.format('pgui', alias), cluster_name, pod.name)
         }
 
 
