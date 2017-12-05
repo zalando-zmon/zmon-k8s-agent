@@ -49,7 +49,7 @@ class Discovery:
         self.cluster_id = os.environ.get('ZMON_AGENT_KUBERNETES_CLUSTER_ID')
         self.alias = os.environ.get('ZMON_AGENT_KUBERNETES_CLUSTER_ALIAS', '')
         self.environment = os.environ.get('ZMON_AGENT_KUBERNETES_CLUSTER_ENVIRONMENT', '')
-
+        self.hosted_zone_format_string = os.environ.get('ZMON_HOSTED_ZONE_FORMAT_STRING', '{}.{}.example.org')
         self.postgres_user = os.environ.get('ZMON_AGENT_POSTGRES_USER')
         self.postgres_pass = os.environ.get('ZMON_AGENT_POSTGRES_PASS')
         if not (self.postgres_user and self.postgres_pass):
@@ -542,7 +542,8 @@ def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region,
             'dnsname': service_dns_name,
             'shards': {
                 'postgres': '{}:{}/postgres'.format(service_dns_name, POSTGRESQL_DEFAULT_PORT)
-            }
+            },
+            'deeplink1' : '{}/#/clusters/{}'.format(self.hosted_zone_format_string.format('pgui', alias), labels.get('version'))
         }
 
 
@@ -600,7 +601,8 @@ def get_postgresql_cluster_members(kube_client, cluster_id, alias, environment, 
             'spilo_role': labels.get('spilo-role', ''),
             'application': 'spilo',
             'version': cluster_name,
-            'volume': ebs_volume_id
+            'volume': ebs_volume_id,
+            'deeplink1' : '{}/#/clusters/{}/{}'.format(self.hosted_zone_format_string.format('pgui', alias), cluster_name, pod.name)
         }
 
 
