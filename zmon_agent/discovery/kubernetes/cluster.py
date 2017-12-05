@@ -543,7 +543,8 @@ def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region,
             'shards': {
                 'postgres': '{}:{}/postgres'.format(service_dns_name, POSTGRESQL_DEFAULT_PORT)
             },
-            'deeplink1' : '{}/#/clusters/{}'.format(hosted_zone.format('pgui', alias), labels.get('version'))
+            'deeplink1': '{}/#/clusters/{}'.format(hosted_zone.format('pgui', alias), labels.get('version')),
+            'icon1': 'fa-server'
         }
 
 
@@ -602,7 +603,8 @@ def get_postgresql_cluster_members(kube_client, cluster_id, alias, environment, 
             'application': 'spilo',
             'version': cluster_name,
             'volume': ebs_volume_id,
-            'deeplink1' : '{}/#/clusters/{}/{}'.format(hosted_zone.format('pgui', alias), cluster_name, pod.name)
+            'deeplink1': '{}/#/clusters/{}/{}'.format(hosted_zone.format('pgui', alias), cluster_name, pod.name),
+            'icon1': 'fa-server'
         }
 
 
