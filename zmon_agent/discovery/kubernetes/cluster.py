@@ -545,7 +545,7 @@ def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region,
             },
             'deeplink1': '{}/#/status/{}'.format(hosted_zone.format('pgui', alias), labels.get('version')),
             'icon1': 'fa-server',
-            'deepling2': '{}/#/clusters/{}'.format(hosted_zone.format('pgview', alias), labels.get('version')),
+            'deeplink2': '{}/#/clusters/{}'.format(hosted_zone.format('pgview', alias), labels.get('version')),
             'icon2': 'fa-line-chart'
         }
 
@@ -607,7 +607,7 @@ def get_postgresql_cluster_members(kube_client, cluster_id, alias, environment, 
             'volume': ebs_volume_id,
             'deeplink1': '{}/#/status/{}'.format(hosted_zone.format('pgui', alias), cluster_name),
             'icon1': 'fa-server',
-            'deepling2': '{}/#/clusters/{}/{}'.format(hosted_zone.format('pgview', alias), cluster_name, pod.name),
+            'deeplink2': '{}/#/clusters/{}/{}'.format(hosted_zone.format('pgview', alias), cluster_name, pod.name),
             'icon2': 'fa-line-chart'
         }
 
