@@ -34,5 +34,5 @@ build_steps:
 
 - desc: "Build Docker Image with OpenTracing support"
   cmd: |
-    docker build -t registry-write.opensource.zalan.do/zmon/zmon-agent-core:0.1-ot-ls-#{CDP_BUILD_VERSION} .
-    docker push registry-write.opensource.zalan.do/zmon/zmon-agent-core:0.1-ot-ls-#{CDP_BUILD_VERSION}
+    docker build -t registry-write.opensource.zalan.do/zmon/zmon-agent-core:opentracing-instana-#{CDP_BUILD_VERSION} .
+    docker push registry-write.opensource.zalan.do/zmon/zmon-agent-core:opentracing-instana-#{CDP_BUILD_VERSION}
