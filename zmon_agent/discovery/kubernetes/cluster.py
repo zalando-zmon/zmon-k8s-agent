@@ -111,7 +111,7 @@ class Discovery:
 
         postgresql_cluster_entities, pce = itertools.tee(get_postgresql_clusters(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
-            self.hosted_zone_format_string, namespace=self.namespace)
+            self.hosted_zone_format_string, namespace=self.namespace))
         postgresql_cluster_member_entities = get_postgresql_cluster_members(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
             self.hosted_zone_format_string, namespace=self.namespace)
