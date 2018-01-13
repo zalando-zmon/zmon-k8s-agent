@@ -15,6 +15,7 @@ AGENT_TYPE = 'zmon-kubernetes-agent'
 
 POD_TYPE = 'kube_pod'
 CONTAINER_TYPE = 'kube_pod_container'
+NAMESPACE_TYPE = 'kube_namespace'
 SERVICE_TYPE = 'kube_service'
 NODE_TYPE = 'kube_node'
 REPLICASET_TYPE = 'kube_replicaset'
@@ -83,6 +84,8 @@ class Discovery:
 
     def get_entities(self) -> list:
 
+        self.kube_client.invalidate_namespace_cache()
+
         pod_container_entities = list(get_cluster_pods_and_containers(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
             namespace=self.namespace))
@@ -91,6 +94,10 @@ class Discovery:
         node_entities = get_cluster_nodes(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
             pod_container_entities, namespace=self.namespace)
+
+        namespace_entities = get_cluster_namespaces(
+            self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
+            namespace=self.namespace)
 
         service_entities = get_cluster_services(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
@@ -120,7 +127,7 @@ class Discovery:
             self.infrastructure_account, self.postgres_user, self.postgres_pass)
 
         return list(itertools.chain(
-            pod_container_entities, node_entities, service_entities, replicaset_entities,
+            pod_container_entities, node_entities, namespace_entities, service_entities, replicaset_entities,
             daemonset_entities, ingress_entities, statefulset_entities, postgresql_cluster_entities,
             postgresql_cluster_member_entities, postgresql_database_entities))
 
@@ -339,6 +346,26 @@ def get_cluster_nodes(
             'node_out_of_disk': statuses.get('OutOfDisk', False),
             'node_memory_pressure': statuses.get('MemoryPressure', False),
             'node_disk_pressure': statuses.get('DiskPressure', False),
+        }
+
+        entity.update(entity_labels(obj, 'labels', 'annotations'))
+
+        yield entity
+
+
+def get_cluster_namespaces(kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace=None):
+    for namespace in kube_client.get_namespaces():
+        obj = namespace.obj
+
+        entity = {
+            'id': 'namespace-{}[{}]'.format(namespace.name, cluster_id),
+            'type': NAMESPACE_TYPE,
+            'kube_cluster': cluster_id,
+            'alias': alias,
+            'environment': environment,
+            'created_by': AGENT_TYPE,
+            'infrastructure_account': infrastructure_account,
+            'region': region,
         }
 
         entity.update(entity_labels(obj, 'labels', 'annotations'))
