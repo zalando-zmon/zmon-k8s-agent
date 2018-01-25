@@ -354,11 +354,14 @@ def get_cluster_nodes(
 
 
 def get_cluster_namespaces(kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace=None):
-    for namespace in kube_client.get_namespaces():
-        obj = namespace.obj
+
+    for ns in kube_client.get_namespaces():
+        obj = ns.obj
+        if namespace and namespace != ns.name:
+            continue
 
         entity = {
-            'id': 'namespace-{}[{}]'.format(namespace.name, cluster_id),
+            'id': 'namespace-{}[{}]'.format(ns.name, cluster_id),
             'type': NAMESPACE_TYPE,
             'kube_cluster': cluster_id,
             'alias': alias,
@@ -366,6 +369,8 @@ def get_cluster_namespaces(kube_client, cluster_id, alias, environment, region, 
             'created_by': AGENT_TYPE,
             'infrastructure_account': infrastructure_account,
             'region': region,
+
+            'namespace_name': ns.name,
         }
 
         entity.update(entity_labels(obj, 'labels', 'annotations'))
