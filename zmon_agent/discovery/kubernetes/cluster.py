@@ -527,9 +527,10 @@ def get_postgresql_clusters(statefulsets, kube_client, cluster_id, alias, enviro
         service_namespace = obj['metadata']['namespace']
         service_dns_name = '{}.{}.svc.cluster.local'.format(service.name, service_namespace)
 
+        statefulset_error = ''
         statefulset = [ss for ss in ssets if ss['version'] == version]
         if not statefulset:  # can happen when the replica count is 0.In this case we don't have a running cluster.
-            continue
+            statefulset_error = 'There is no statefulset attached'
 
         ss = statefulset[0]
 
@@ -551,6 +552,7 @@ def get_postgresql_clusters(statefulsets, kube_client, cluster_id, alias, enviro
             },
             'expected_replica_count': ss['replicas'],
             'current_replica_count': ss['actual_replicas'],
+            'statefulset_error': statefulset_error,
             'deeplink1': '{}/#/status/{}'.format(hosted_zone.format('pgui', alias), version),
             'icon1': 'fa-server',
             'deeplink2': '{}/#/clusters/{}'.format(hosted_zone.format('pgview', alias), version),
@@ -642,7 +644,7 @@ def get_postgresql_databases(postgresql_clusters, cluster_id, alias, environment
                 'created_by': AGENT_TYPE,
                 'infrastructure_account': infrastructure_account,
                 'region': region,
-
+                'version': pgcluster['version'],
                 'postgresql_cluster': pgcluster['id'],
                 'database_name': db,
                 'shards': {
@@ -663,7 +665,7 @@ def get_postgresql_databases(postgresql_clusters, cluster_id, alias, environment
                     'created_by': AGENT_TYPE,
                     'infrastructure_account': infrastructure_account,
                     'region': region,
-
+                    'version': pgcluster['version'],
                     'postgresql_cluster': pgcluster['id'],
                     'database_name': db,
                     'shards': {
