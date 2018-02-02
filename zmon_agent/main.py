@@ -10,12 +10,6 @@ import tokens
 
 from zmon_cli.client import Zmon, compare_entities
 
-# TODO: Load dynamically
-from zmon_agent.discovery.kubernetes import get_discovery_agent_class
-
-
-BUILTIN_DISCOVERY = ('kubernetes',)
-
 AGENT_TYPE = 'zmon-agent'
 
 logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s')
@@ -24,8 +18,16 @@ logger.addHandler(logging.StreamHandler(stream=sys.stdout))
 logger.setLevel(logging.INFO)
 
 
+def load_module(name):
+    mod = __import__(name)
+    parts = name.split('.')
+    for comp in parts[1:]:
+        mod = getattr(mod, comp)
+    return mod
+
+
 def get_clients(zmon_url, verify=True) -> Zmon:
-    """Return Pykube and Zmon client instances as a tuple."""
+    """Return Zmon client instance"""
 
     # Get token if set as ENV variable. This is useful in development.
     zmon_token = os.getenv('ZMON_AGENT_TOKEN')
@@ -90,9 +92,8 @@ def add_new_entities(all_current_entities, existing_entities, zmon_client, dry_r
     return new_entities, error_count
 
 
-def sync(infrastructure_account, region, entity_service, verify, dry_run, interval):
-    # TODO: load agent dynamically!
-    Discovery = get_discovery_agent_class()
+def sync(mod, infrastructure_account, region, entity_service, verify, dry_run, interval):
+    Discovery = mod.get_discovery_agent_class()
     discovery = Discovery(region, infrastructure_account)
 
     while True:
@@ -162,12 +163,7 @@ def main():
                       help='Infrastructure account which identifies this agent. Can be set via  '
                            'ZMON_AGENT_INFRASTRUCTURE_ACCOUNT env variable.')
     argp.add_argument('-r', '--region', dest='region',
-                      help='Cluster region. Can be set via ZMON_AGENT_REGION env variable.')
-
-    argp.add_argument('-d', '--discover', dest='discover',
-                      help=('Comma separated list of builtin discovery agents to be used. Current supported discovery '
-                            'agents are {}. Can be set via ZMON_AGENT_BUILTIN_DISCOVERY env variable.').format(
-                                BUILTIN_DISCOVERY))
+                      help='Infrastructure Account Region. Can be set via ZMON_AGENT_REGION env variable.')
 
     argp.add_argument('-e', '--entity-service', dest='entity_service',
                       help='ZMON backend URL. Can be set via ZMON_AGENT_ENTITY_SERVICE_URL env variable.')
@@ -179,6 +175,9 @@ def main():
     argp.add_argument('-j', '--json', dest='json', action='store_true', help='Print JSON output only.', default=False)
     argp.add_argument('--skip-ssl', dest='skip_ssl', action='store_true', default=False)
     argp.add_argument('-v', '--verbose', dest='verbose', action='store_true', default=False, help='Verbose output.')
+
+    argp.add_argument('-m', '--module', dest='mod', help='Python module to load for discovery. Can be set via '
+                      'ZMON_AGENT_MODULE env variable')
 
     args = argp.parse_args()
 
@@ -222,7 +221,16 @@ def main():
             logger.error('AWS region was not specified and can not be fetched from instance meta-data!')
             raise
 
-    sync(infrastructure_account, region, entity_service, verify, args.json, interval)
+    mod = (args.mod if args.mod else os.environ.get('ZMON_AGENT_MODULE'))
+    if not mod:
+        raise RuntimeError('no module given for discovery')
+
+    try:
+        module = load_module(mod)
+    except Exception:
+        logger.error('Failed to load module {}'.format(args.mod))
+        raise
+    sync(module, infrastructure_account, region, entity_service, verify, args.json, interval)
 
 
 if __name__ == '__main__':
