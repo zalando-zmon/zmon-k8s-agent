@@ -65,10 +65,21 @@ class Discovery:
         self.region = region
         self.infrastructure_account = infrastructure_account
 
-    def get_filter_query(self) -> dict:
-        return {'created_by': AGENT_TYPE, 'kube_cluster': self.cluster_id}
+    def requires(self):
+        return []
 
-    def get_account_entity(self):
+    def provides(self):
+        return [
+            POD_TYPE, CONTAINER_TYPE, NODE_TYPE, REPLICASET_TYPE, STATEFULSET_TYPE,
+            DAEMONSET_TYPE, INGRESS_TYPE,
+            POSTGRESQL_CLUSTER_TYPE, POSTGRESQL_CLUSTER_MEMBER_TYPE,
+            POSTGRESQL_DATABASE_TYPE, POSTGRESQL_DATABASE_REPLICA_TYPE,
+        ]
+
+    def filter_queries(self):
+        return [{'created_by': AGENT_TYPE, 'kube_cluster': self.cluster_id}]
+
+    def account_entity(self):
         entity = {
             'type': 'local',
             'infrastructure_account': self.infrastructure_account,
@@ -82,7 +93,7 @@ class Discovery:
 
         return entity
 
-    def get_entities(self) -> list:
+    def entities(self, dependencies):
 
         pod_container_entities = list(get_cluster_pods_and_containers(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,

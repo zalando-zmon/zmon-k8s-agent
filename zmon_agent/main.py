@@ -80,7 +80,8 @@ def add_new_entities(all_current_entities, existing_entities, zmon_client, dry_r
             logger.info('Found {} new entities to be added in ZMon'.format(len(new_entities)))
             for entity in new_entities:
                 logger.info(
-                    'Adding new {} entity with ID: {}'.format(entity['type'], entity['id']))
+                    'Adding new {} entity with ID: {}'.format(entity['type'], entity['id'])
+                )
 
                 resp = zmon_client.add_entity(entity)
 
@@ -92,72 +93,125 @@ def add_new_entities(all_current_entities, existing_entities, zmon_client, dry_r
     return new_entities, error_count
 
 
-def sync(mod, infrastructure_account, region, entity_service, verify, dry_run, interval):
-    Discovery = mod.get_discovery_agent_class()
-    discovery = Discovery(region, infrastructure_account)
+def sync(plugins, infrastructure_account, region, entity_service, verify, dry_run, interval):
+
+    run_list = [p for p in plugins if not p['depends']]
+    providing = []
+    remaining = []
+    for p in run_list:
+        providing.extend(p['provides'])
+
+    for p in plugins:
+        if not p['depends']:
+            continue
+        if all_in(p['depends'], providing):
+            run_list.append(p)
+            providing.append(p['provides'])
+        else:
+            remaining.append(p)
+
+    lost = []
+    for p in remaining:
+        if all_in(p['depends'], providing):
+            run_list.append(p)
+            providing.append(p['provides'])
+        else:
+            lost.append(p)
+
+    if lost:
+        # Do we want to load from ZMON with
+        # {
+        #  'type': dependency,
+        #  'region': self.region,
+        #  'infrastructure_account': self.infrastructure_account,
+        # }
+        # as fallback?
+        raise Exception('dependencies not provided for plugins: {}'.format(
+                        [p['plugin'] for p in lost]))
 
     while True:
+        entities = {}
+        for plugin in run_list:
+            try:
+                dependencies = {}
+                for name in plugin['depends']:
+                    typed_entities = {k: v for k, v in entities if v['type'] == name}
+                    dependencies.update(typed_entities)
+                discovered = run_sync(plugin, dependencies, infrastructure_account, region,
+                                      entity_service, verify, dry_run, interval)
+                for entity in discovered:
+                    entities[entity] = discovered[entity]
+            except KeyboardInterrupt:
+                logger.error("FIXME: KeyboardInterrupt")
+                raise
+            except Exception:
+                logger.exception('failed to run plugin {}'.format(plugin['plugin']))
+
+        if not dry_run:
+            s = interval if interval else 60
+            time.sleep(s)
+
+
+def all_in(wanted, given):
+    for w in wanted:
+        if w not in given:
+            return False
+    return True
+
+
+def run_sync(plugin, dependencies, infrastructure_account, region, entity_service, verify, dry_run, interval):
+    zmon_client = get_clients(entity_service, verify=verify)
+
+    discovery = plugin['discovery']
+    account_entity = discovery.account_entity()
+
+    all_current_entities = discovery.entities(dependencies) + [account_entity]
+
+    # ZMON entities
+    existing_entities = []
+    for query in discovery.filter_queries():
+        existing_entities.extend(zmon_client.get_entities(query=query))
+
+    # Remove non-existing entities
+    existing_ids = get_existing_ids(existing_entities)
+
+    current_ids = [entity['id'] for entity in all_current_entities]
+
+    to_be_removed_ids, delete_err = remove_missing_entities(
+        existing_ids, current_ids, zmon_client, dry_run=dry_run)
+
+    # Add new entities
+    new_entities, add_err = add_new_entities(
+        all_current_entities, existing_entities, zmon_client, dry_run=dry_run)
+
+    logger.info('{}: Found {} new entities from {} entities ({} failed)'.format(
+        plugin['plugin'], len(new_entities), len(all_current_entities), add_err))
+
+    # Add account entity - always!
+    if not dry_run:
         try:
-            zmon_client = get_clients(entity_service, verify=verify)
-
-            account_entity = discovery.get_account_entity()
-
-            all_current_entities = discovery.get_entities() + [account_entity]
-
-            # ZMON entities
-            query = discovery.get_filter_query()
-            existing_entities = zmon_client.get_entities(query=query)
-
-            # Remove non-existing entities
-            existing_ids = get_existing_ids(existing_entities)
-
-            current_ids = [entity['id'] for entity in all_current_entities]
-
-            to_be_removed_ids, delete_err = remove_missing_entities(
-                existing_ids, current_ids, zmon_client, dry_run=dry_run)
-
-            # Add new entities
-            new_entities, add_err = add_new_entities(
-                all_current_entities, existing_entities, zmon_client, dry_run=dry_run)
-
-            logger.info('Found {} new entities from {} entities ({} failed)'.format(
-                len(new_entities), len(all_current_entities), add_err))
-
-            # Add account entity - always!
-            if not dry_run:
-                try:
-                    account_entity['errors'] = {'delete_count': delete_err, 'add_count': add_err}
-                    zmon_client.add_entity(account_entity)
-                except Exception:
-                    logger.exception('Failed to add account entity!')
-
-            logger.info(
-                'ZMON agent completed sync with {} addition errors and {} deletion errors'.format(add_err, delete_err))
-
-            if dry_run:
-                output = {
-                    'to_be_removed_ids': to_be_removed_ids,
-                    'new_entities': new_entities
-                }
-
-                print(json.dumps(output, indent=4))
-
-            if not interval:
-                logger.info('ZMON agent running once. Exiting!')
-                break
-
-            logger.info('ZMON agent sleeping for {} seconds ...'.format(interval))
-            time.sleep(interval)
-        except KeyboardInterrupt:
-            break
+            account_entity['errors'] = {'delete_count': delete_err, 'add_count': add_err}
+            zmon_client.add_entity(account_entity)
         except Exception:
-            fail_sleep = interval if interval else 60
-            logger.exception('ZMON agent failed. Retrying after {} seconds ...'.format(fail_sleep))
-            time.sleep(fail_sleep)
+            logger.exception('Failed to add account entity!')
+
+    logger.info(
+        'ZMON agent plugin {} completed sync with {} addition errors and {} deletion errors'.format(
+            plugin['plugin'], add_err, delete_err))
+
+    if dry_run:
+        output = {
+            'to_be_removed_ids': to_be_removed_ids,
+            'new_entities': new_entities
+        }
+
+        print(json.dumps(output, indent=4))
+
+    return all_current_entities
 
 
 def main():
-    argp = argparse.ArgumentParser(description='ZMON Kubernetes Agent')
+    argp = argparse.ArgumentParser(description='ZMON Agent')
 
     argp.add_argument('-i', '--infrastructure-account', dest='infrastructure_account', default=None,
                       help='Infrastructure account which identifies this agent. Can be set via  '
@@ -176,8 +230,8 @@ def main():
     argp.add_argument('--skip-ssl', dest='skip_ssl', action='store_true', default=False)
     argp.add_argument('-v', '--verbose', dest='verbose', action='store_true', default=False, help='Verbose output.')
 
-    argp.add_argument('-m', '--module', dest='mod', help='Python module to load for discovery. Can be set via '
-                      'ZMON_AGENT_MODULE env variable')
+    argp.add_argument('-m', '--modules', dest='mods', help='Python module(s) to load for discovery. Can be set via '
+                      'ZMON_AGENT_MODULES env variable. Space separated list.')
 
     args = argp.parse_args()
 
@@ -221,16 +275,26 @@ def main():
             logger.error('AWS region was not specified and can not be fetched from instance meta-data!')
             raise
 
-    mod = (args.mod if args.mod else os.environ.get('ZMON_AGENT_MODULE'))
-    if not mod:
+    mods = (args.mods if args.mods else os.environ.get('ZMON_AGENT_MODULES'))
+    if not mods:
         raise RuntimeError('no module given for discovery')
 
-    try:
-        module = load_module(mod)
-    except Exception:
-        logger.error('Failed to load module {}'.format(args.mod))
-        raise
-    sync(module, infrastructure_account, region, entity_service, verify, args.json, interval)
+    plugins = {}
+    for mod in mods.split():
+        try:
+            module = load_module(mod)
+            cls = module.agent_class()
+            discovery = cls(region, infrastructure_account)
+            plugins[mod] = {
+                'plugin': module,
+                'discovery': discovery,
+                'provides': discovery.provides(),
+                'depends': discovery.requires(),
+            }
+        except Exception:
+            logger.error('Failed to load module {}'.format(args.mod))
+            raise
+    sync(plugins, infrastructure_account, region, entity_service, verify, args.json, interval)
 
 
 if __name__ == '__main__':
