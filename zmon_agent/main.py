@@ -4,6 +4,7 @@ import time
 import argparse
 import logging
 import json
+import re
 
 import requests
 import tokens
@@ -17,6 +18,13 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(stream=sys.stdout))
 logger.setLevel(logging.INFO)
 
+INVALID_ENTITY_FIRST_CHAR = re.compile('^[^a-z]+')
+INVALID_ENTITY_CHARS_PATTERN = re.compile('[^a-zA-Z0-9@._:\[\]-]')
+
+
+def clean_entity_id(s: str) -> str:
+        return INVALID_ENTITY_CHARS_PATTERN.sub('-', INVALID_ENTITY_FIRST_CHAR.sub('', s))
+
 
 def load_module(name):
     mod = __import__(name)
@@ -24,6 +32,27 @@ def load_module(name):
     for comp in parts[1:]:
         mod = getattr(mod, comp)
     return mod
+
+
+class Plugin:
+
+    def __init__(self, name, region, infrastructure_account):
+        module = load_module(name)
+        cls = module.agent_class()
+        self._obj = cls(region, infrastructure_account)
+        self._name = name
+
+    def depends(self):
+        return self._obj.requires()
+
+    def provides(self):
+        return self._obj.provides()
+
+    def name(self):
+        return self._name
+
+    def obj(self):
+        return self._obj
 
 
 def get_clients(zmon_url, verify=True) -> Zmon:
@@ -95,30 +124,23 @@ def add_new_entities(all_current_entities, existing_entities, zmon_client, dry_r
 
 def sync(plugins, infrastructure_account, region, entity_service, verify, dry_run, interval):
 
-    run_list = [p for p in plugins if not p['depends']]
+    run_list = [p for p in plugins if not p.depends()]
+    if not run_list:
+        raise RuntimeError('no plugins without dependency')
+
+    remaining = {p.name(): p for p in plugins if p.depends()}
     providing = []
-    remaining = []
     for p in run_list:
-        providing.extend(p['provides'])
+        providing.extend(p.provides())
 
-    for p in plugins:
-        if not p['depends']:
-            continue
-        if all_in(p['depends'], providing):
-            run_list.append(p)
-            providing.append(p['provides'])
-        else:
-            remaining.append(p)
+    for n in range(len(remaining)):
+        for name, plugin in remaining:
+            if all_in(plugin.depends(), providing):
+                run_list.append(plugin)
+                providing.append(plugin.provides())
+                del(remaining, name)
 
-    lost = []
-    for p in remaining:
-        if all_in(p['depends'], providing):
-            run_list.append(p)
-            providing.append(p['provides'])
-        else:
-            lost.append(p)
-
-    if lost:
+    if len(remaining):
         # Do we want to load from ZMON with
         # {
         #  'type': dependency,
@@ -127,25 +149,31 @@ def sync(plugins, infrastructure_account, region, entity_service, verify, dry_ru
         # }
         # as fallback?
         raise Exception('dependencies not provided for plugins: {}'.format(
-                        [p['plugin'] for p in lost]))
+                        [p.name() for p in remaining.values()]))
 
     while True:
         entities = {}
+        err = False
         for plugin in run_list:
             try:
                 dependencies = {}
-                for name in plugin['depends']:
+                for name in plugin.depends():
                     typed_entities = {k: v for k, v in entities if v['type'] == name}
                     dependencies.update(typed_entities)
                 discovered = run_sync(plugin, dependencies, infrastructure_account, region,
                                       entity_service, verify, dry_run, interval)
                 for entity in discovered:
-                    entities[entity] = discovered[entity]
+                    entity_id = clean_entity_id(entity.get('id'))
+                    entity['id'] = entity_id
+                    entities[entity_id] = entity
             except KeyboardInterrupt:
                 logger.error("FIXME: KeyboardInterrupt")
                 raise
             except Exception:
-                logger.exception('failed to run plugin {}'.format(plugin['plugin']))
+                logger.exception('failed to run plugin {}'.format(plugin.name()))
+                err = True
+            if err:
+                break
 
         if not dry_run:
             s = interval if interval else 60
@@ -162,7 +190,7 @@ def all_in(wanted, given):
 def run_sync(plugin, dependencies, infrastructure_account, region, entity_service, verify, dry_run, interval):
     zmon_client = get_clients(entity_service, verify=verify)
 
-    discovery = plugin['discovery']
+    discovery = plugin.obj()
     account_entity = discovery.account_entity()
 
     all_current_entities = discovery.entities(dependencies) + [account_entity]
@@ -185,7 +213,7 @@ def run_sync(plugin, dependencies, infrastructure_account, region, entity_servic
         all_current_entities, existing_entities, zmon_client, dry_run=dry_run)
 
     logger.info('{}: Found {} new entities from {} entities ({} failed)'.format(
-        plugin['plugin'], len(new_entities), len(all_current_entities), add_err))
+        plugin.name(), len(new_entities), len(all_current_entities), add_err))
 
     # Add account entity - always!
     if not dry_run:
@@ -197,7 +225,7 @@ def run_sync(plugin, dependencies, infrastructure_account, region, entity_servic
 
     logger.info(
         'ZMON agent plugin {} completed sync with {} addition errors and {} deletion errors'.format(
-            plugin['plugin'], add_err, delete_err))
+            plugin.name(), add_err, delete_err))
 
     if dry_run:
         output = {
@@ -279,18 +307,11 @@ def main():
     if not mods:
         raise RuntimeError('no module given for discovery')
 
-    plugins = {}
+    plugins = []
     for mod in mods.split():
         try:
-            module = load_module(mod)
-            cls = module.agent_class()
-            discovery = cls(region, infrastructure_account)
-            plugins[mod] = {
-                'plugin': module,
-                'discovery': discovery,
-                'provides': discovery.provides(),
-                'depends': discovery.requires(),
-            }
+            plugin = Plugin(mod, region, infrastructure_account)
+            plugins.append(plugin)
         except Exception:
             logger.error('Failed to load module {}'.format(args.mod))
             raise
