@@ -61,9 +61,11 @@ def remove_missing_entities(existing_ids, current_ids, zmon_client, dry_run=Fals
             try:
                 deleted = zmon_client.delete_entity(entity_id)
                 if not deleted:
+                    current_span.set_tag('error', True)
                     logger.info('Failed to delete entity!')
                     error_count += 1
             except Exception:
+                current_span.set_tag('error', True)
                 current_span.log_kv({'exception': traceback.format_exc()})
 
     return to_be_removed_ids, error_count
@@ -98,6 +100,7 @@ def add_new_entities(all_current_entities, existing_entities, zmon_client, dry_r
 
                 resp.raise_for_status()
         except Exception:
+            current_span.set_tag('error', True)
             logger.exception('Failed to add entity!')
             current_span.log_kv({'exception': traceback.format_exc()})
             error_count += 1
