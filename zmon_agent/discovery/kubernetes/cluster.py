@@ -17,6 +17,7 @@ AGENT_TYPE = 'zmon-kubernetes-agent'
 
 POD_TYPE = 'kube_pod'
 CONTAINER_TYPE = 'kube_pod_container'
+NAMESPACE_TYPE = 'kube_namespace'
 SERVICE_TYPE = 'kube_service'
 NODE_TYPE = 'kube_node'
 REPLICASET_TYPE = 'kube_replicaset'
@@ -27,6 +28,7 @@ INGRESS_TYPE = 'kube_ingress'
 POSTGRESQL_CLUSTER_TYPE = 'postgresql_cluster'
 POSTGRESQL_CLUSTER_MEMBER_TYPE = 'postgresql_cluster_member'
 POSTGRESQL_DATABASE_TYPE = 'postgresql_database'
+POSTGRESQL_DATABASE_REPLICA_TYPE = 'postgresql_database_replica'
 POSTGRESQL_DEFAULT_PORT = 5432
 POSTGRESQL_CONNECT_TIMEOUT = os.environ.get('ZMON_AGENT_POSTGRESQL_CONNECT_TIMEOUT', 2)
 
@@ -51,7 +53,7 @@ class Discovery:
         self.cluster_id = os.environ.get('ZMON_AGENT_KUBERNETES_CLUSTER_ID')
         self.alias = os.environ.get('ZMON_AGENT_KUBERNETES_CLUSTER_ALIAS', '')
         self.environment = os.environ.get('ZMON_AGENT_KUBERNETES_CLUSTER_ENVIRONMENT', '')
-
+        self.hosted_zone_format_string = os.environ.get('ZMON_HOSTED_ZONE_FORMAT_STRING', '{}.{}.example.org')
         self.postgres_user = os.environ.get('ZMON_AGENT_POSTGRES_USER')
         self.postgres_pass = os.environ.get('ZMON_AGENT_POSTGRES_PASS')
         if not (self.postgres_user and self.postgres_pass):
@@ -86,6 +88,8 @@ class Discovery:
     @trace()
     def get_entities(self) -> list:
 
+        self.kube_client.invalidate_namespace_cache()
+
         pod_container_entities = list(get_cluster_pods_and_containers(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
             namespace=self.namespace))
@@ -94,6 +98,10 @@ class Discovery:
         node_entities = get_cluster_nodes(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
             pod_container_entities, namespace=self.namespace)
+
+        namespace_entities = get_cluster_namespaces(
+            self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
+            namespace=self.namespace)
 
         service_entities = get_cluster_services(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
@@ -104,26 +112,27 @@ class Discovery:
         daemonset_entities = get_cluster_daemonsets(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
             namespace=self.namespace)
-        statefulset_entities = get_cluster_statefulsets(
+        statefulset_entities, sse = itertools.tee(get_cluster_statefulsets(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
-            namespace=self.namespace)
+            namespace=self.namespace))
 
         ingress_entities = get_cluster_ingresses(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
             namespace=self.namespace)
 
-        postgresql_cluster_entities = get_postgresql_clusters(
-            self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
-            namespace=self.namespace)
+        postgresql_cluster_entities, pce = itertools.tee(
+            get_postgresql_clusters(self.kube_client, self.cluster_id, self.alias, self.environment, self.region,
+                                    self.infrastructure_account, self.hosted_zone_format_string, sse,
+                                    namespace=self.namespace))
         postgresql_cluster_member_entities = get_postgresql_cluster_members(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
-            namespace=self.namespace)
-        postgresql_database_entities = get_postgresql_databases(
-            postgresql_cluster_entities, self.cluster_id, self.alias, self.environment, self.region,
-            self.infrastructure_account, self.postgres_user, self.postgres_pass)
+            self.hosted_zone_format_string, namespace=self.namespace)
+        postgresql_database_entities = get_postgresql_databases(self.cluster_id, self.alias, self.environment,
+                                                                self.region, self.infrastructure_account,
+                                                                self.postgres_user, self.postgres_pass, pce)
 
         return list(itertools.chain(
-            pod_container_entities, node_entities, service_entities, replicaset_entities,
+            pod_container_entities, node_entities, namespace_entities, service_entities, replicaset_entities,
             daemonset_entities, ingress_entities, statefulset_entities, postgresql_cluster_entities,
             postgresql_cluster_member_entities, postgresql_database_entities))
 
@@ -252,15 +261,17 @@ def get_cluster_services(kube_client, cluster_id, alias, environment, region, in
     for service in services:
         obj = service.obj
 
-        host = obj['spec']['clusterIP']
+        host = obj['spec'].get('clusterIP', None)
         service_type = obj['spec']['type']
         if service_type == 'LoadBalancer':
             ingress = obj['status'].get('loadBalancer', {}).get('ingress', [])
             hostname = ingress[0].get('hostname') if ingress else None
             if hostname:
                 host = hostname
+        elif service_type == 'ExternalName':
+            host = obj['spec']['externalName']
 
-        yield {
+        entity = {
             'id': 'service-{}-{}[{}]'.format(service.name, service.namespace, cluster_id),
             'type': SERVICE_TYPE,
             'kube_cluster': cluster_id,
@@ -270,17 +281,21 @@ def get_cluster_services(kube_client, cluster_id, alias, environment, region, in
             'infrastructure_account': infrastructure_account,
             'region': region,
 
-            'ip': obj['spec']['clusterIP'],
+            'ip': obj['spec'].get('clusterIP', None),
             'host': host,
-            'port': obj['spec']['ports'][0],  # Assume first port is the used one.
+            'port': next(iter(obj['spec'].get('ports', [])), None),  # Assume first port is the used one.
 
             'service_name': service.name,
             'service_namespace': obj['metadata']['namespace'],
             'service_type': service_type,
-            'service_ports': obj['spec']['ports'],  # Could be useful when multiple ports are exposed.
+            'service_ports': obj['spec'].get('ports', None),  # Could be useful when multiple ports are exposed.
 
             'endpoints_count': endpoints_map.get(service.name, 0),
         }
+
+        entity.update(entity_labels(obj, 'labels', 'annotations'))
+
+        yield entity
 
 
 @trace(tags={'kubernetes': 'node'})
@@ -342,6 +357,32 @@ def get_cluster_nodes(
             'node_out_of_disk': statuses.get('OutOfDisk', False),
             'node_memory_pressure': statuses.get('MemoryPressure', False),
             'node_disk_pressure': statuses.get('DiskPressure', False),
+        }
+
+        entity.update(entity_labels(obj, 'labels', 'annotations'))
+
+        yield entity
+
+
+@trace(tags={'kubernetes': 'namespace'})
+def get_cluster_namespaces(kube_client, cluster_id, alias, environment, region, infrastructure_account, namespace=None):
+
+    for ns in kube_client.get_namespaces():
+        obj = ns.obj
+        if namespace and namespace != ns.name:
+            continue
+
+        entity = {
+            'id': 'namespace-{}[{}]'.format(ns.name, cluster_id),
+            'type': NAMESPACE_TYPE,
+            'kube_cluster': cluster_id,
+            'alias': alias,
+            'environment': environment,
+            'created_by': AGENT_TYPE,
+            'infrastructure_account': infrastructure_account,
+            'region': region,
+
+            'namespace_name': ns.name,
         }
 
         entity.update(entity_labels(obj, 'labels', 'annotations'))
@@ -419,6 +460,8 @@ def get_cluster_statefulsets(kube_client, cluster_id, alias, environment, region
 
             'replicas': obj['spec'].get('replicas'),
             'replicas_status': obj['status'].get('replicas'),
+            'actual_replicas': obj['status'].get('readyReplicas'),
+            'version': obj['metadata']['labels']['version']
         }
 
         entity.update(entity_labels(obj, 'labels', 'annotations'))
@@ -494,8 +537,6 @@ def get_cluster_ingresses(kube_client, cluster_id, alias, environment, region, i
 ########################################################################################################################
 @trace(tags={'kubernetes': 'postgres'})
 def list_postgres_databases(*args, **kwargs):
-    logger.info("Trying to list DBs on host: {}".format(kwargs['host']))
-
     try:
         kwargs.update({'connect_timeout': POSTGRESQL_CONNECT_TIMEOUT})
 
@@ -509,46 +550,70 @@ def list_postgres_databases(*args, **kwargs):
         """)
         return [row[0] for row in cur.fetchall()]
     except Exception:
-        logger.exception("Failed to list DBs!")
+        logger.exception("Failed to list DBs on %s", kwargs.get('host', '{no host specified}'))
         return []
 
 
 @trace(tags={'kubernetes': 'postgres'})
-def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region, infrastructure_account,
-                            namespace=None):
+def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region, infrastructure_account, hosted_zone,
+                            statefulsets, namespace=None):
+
+    ssets = [ss for ss in statefulsets]
+
+    # TODO in theory clusters should be discovered using CRDs
     services = get_all(kube_client, kube_client.get_services, namespace)
 
     for service in services:
         obj = service.obj
 
-        # TODO: filter in the API call
         labels = obj['metadata'].get('labels', {})
-        if labels.get('application') != 'spilo':
+        version = labels.get('version')
+
+        # we skip non-Spilos and replica services
+        if labels.get('application') != 'spilo' or labels.get('spilo-role') == 'replica':
             continue
 
         service_namespace = obj['metadata']['namespace']
         service_dns_name = '{}.{}.svc.cluster.local'.format(service.name, service_namespace)
 
+        statefulset_error = ''
+        ss = {}
+        statefulset = [ss for ss in ssets if ss['version'] == version]
+
+        if not statefulset:  # can happen when the replica count is 0.In this case we don't have a running cluster.
+            statefulset_error = 'There is no statefulset attached'
+        else:
+            ss = statefulset[0]
+
         yield {
             'id': 'pg-{}[{}]'.format(service.name, cluster_id),
             'type': POSTGRESQL_CLUSTER_TYPE,
             'kube_cluster': cluster_id,
-            'alias': alias,
+            'account_alias': alias,
             'environment': environment,
             'created_by': AGENT_TYPE,
             'infrastructure_account': infrastructure_account,
             'region': region,
-
+            'spilo_cluster': version,
+            'application': "spilo",
+            'version': version,
             'dnsname': service_dns_name,
             'shards': {
                 'postgres': '{}:{}/postgres'.format(service_dns_name, POSTGRESQL_DEFAULT_PORT)
-            }
+            },
+            'expected_replica_count': ss.get('replicas', 0),
+            'current_replica_count': ss.get('actual_replicas', 0),
+            'statefulset_error': statefulset_error,
+            'deeplink1': '{}/#/status/{}'.format(hosted_zone.format('pgui', alias), version),
+            'icon1': 'fa-server',
+            'deeplink2': '{}/#/clusters/{}'.format(hosted_zone.format('pgview', alias), version),
+            'icon2': 'fa-line-chart'
         }
 
 
 @trace(tags={'kubernetes': 'postgres'})
 def get_postgresql_cluster_members(kube_client, cluster_id, alias, environment, region, infrastructure_account,
-                                   namespace=None):
+                                   hosted_zone, namespace=None):
     pods = get_all(kube_client, kube_client.get_pods, namespace)
     pvcs = get_all(kube_client, kube_client.get_persistentvolumeclaims, namespace)
     pvs = get_all(kube_client, kube_client.get_persistentvolumes)
@@ -565,6 +630,10 @@ def get_postgresql_cluster_members(kube_client, cluster_id, alias, environment, 
         pod_namespace = obj['metadata']['namespace']
         service_dns_name = '{}.{}.svc.cluster.local'.format(labels['version'], pod_namespace)
 
+        container = obj['spec']['containers'][0]  # we don't assume more than one container
+        cluster_name = [env['value'] for env in container['env'] if env['name'] == 'SCOPE'][0]
+
+        ebs_volume_id = ''
         # unfortunately, there appears to be no way of filtering these on the server side :(
         try:
             pvc_name = obj['spec']['volumes'][0]['persistentVolumeClaim']['claimName']  # assume only one PVC
@@ -575,22 +644,33 @@ def get_postgresql_cluster_members(kube_client, cluster_id, alias, environment, 
                             ebs_volume_id = pv.obj['spec']['awsElasticBlockStore']['volumeID'].split('/')[-1]
                             break  # only one matching item is expected, so when found, we can leave the loop
                     break
-        except Exception:
-            ebs_volume_id = ''
+        except KeyError:
+            pass
 
         yield {
             'id': 'pg-{}-{}[{}]'.format(service_dns_name, pod_number, cluster_id),
             'type': POSTGRESQL_CLUSTER_MEMBER_TYPE,
             'kube_cluster': cluster_id,
-            'alias': alias,
+            'account_alias': alias,
             'environment': environment,
             'created_by': AGENT_TYPE,
             'infrastructure_account': infrastructure_account,
             'region': region,
-
-            'dnsname': service_dns_name,
+            'cluster_dns_name': service_dns_name,
             'pod': pod.name,
-            'volume': ebs_volume_id
+            'pod_phase': obj['status']['phase'],
+            'image': container['image'],
+            'container_name': container['name'],
+            'ip': obj['status'].get('podIP', ''),
+            'spilo_cluster': cluster_name,
+            'spilo_role': labels.get('spilo-role', ''),
+            'application': 'spilo',
+            'version': cluster_name,
+            'volume': ebs_volume_id,
+            'deeplink1': '{}/#/status/{}'.format(hosted_zone.format('pgui', alias), cluster_name),
+            'icon1': 'fa-server',
+            'deeplink2': '{}/#/clusters/{}/{}'.format(hosted_zone.format('pgview', alias), cluster_name, pod.name),
+            'icon2': 'fa-line-chart'
         }
 
 
@@ -617,10 +697,32 @@ def get_postgresql_databases(postgresql_clusters, cluster_id, alias, environment
                 'created_by': AGENT_TYPE,
                 'infrastructure_account': infrastructure_account,
                 'region': region,
-
+                'version': pgcluster['version'],
                 'postgresql_cluster': pgcluster['id'],
                 'database_name': db,
                 'shards': {
                     db: '{}:{}/{}'.format(pgcluster['dnsname'], POSTGRESQL_DEFAULT_PORT, db)
-                }
+                },
+                'role': 'master'
             }
+
+            if pgcluster['expected_replica_count'] > 1:  # the first k8s replica is the master itself
+                name_parts = pgcluster['dnsname'].split('.')
+                repl_dnsname = '.'.join([name_parts[0] + '-repl'] + name_parts[1:])
+                yield {
+                    'id': '{}-repl-{}'.format(db, pgcluster['id']),
+                    'type': POSTGRESQL_DATABASE_REPLICA_TYPE,
+                    'kube_cluster': cluster_id,
+                    'alias': alias,
+                    'environment': environment,
+                    'created_by': AGENT_TYPE,
+                    'infrastructure_account': infrastructure_account,
+                    'region': region,
+                    'version': pgcluster['version'],
+                    'postgresql_cluster': pgcluster['id'],
+                    'database_name': db,
+                    'shards': {
+                        db: '{}:{}/{}'.format(repl_dnsname, POSTGRESQL_DEFAULT_PORT, db)
+                    },
+                    'role': 'replica'
+                }
