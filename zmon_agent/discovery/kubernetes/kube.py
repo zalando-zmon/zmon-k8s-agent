@@ -3,8 +3,6 @@ Wrapper client for Kubernetes API using ``pykube``
 """
 import pykube
 
-from opentracing_utils import trace
-
 
 DEFAULT_SERVICE_ACC = '/var/run/secrets/kubernetes.io/serviceaccount'
 
@@ -36,48 +34,37 @@ class Client:
 
         return self.__pykube
 
-    @trace()
     def get_namespaces(self) -> list:
         if not self.__namespaces:
             self.__namespaces = list(pykube.Namespace.objects(self.client).filter())
         return self.__namespaces
 
-    @trace()
     def get_nodes(self) -> pykube.query.Query:
         return pykube.Node.objects(self.client).filter()
 
-    @trace()
     def get_pods(self, namespace=DEFAULT_NAMESPACE) -> pykube.query.Query:
         return pykube.Pod.objects(self.client).filter(namespace=namespace)
 
-    @trace()
     def get_statefulsets(self, namespace=DEFAULT_NAMESPACE) -> pykube.query.Query:
         return pykube.StatefulSet.objects(self.client).filter(namespace=namespace)
 
-    @trace()
     def get_daemonsets(self, namespace=DEFAULT_NAMESPACE) -> pykube.query.Query:
         return pykube.DaemonSet.objects(self.client).filter(namespace=namespace)
 
-    @trace()
     def get_replicasets(self, namespace=DEFAULT_NAMESPACE) -> pykube.query.Query:
         return pykube.ReplicaSet.objects(self.client).filter(namespace=namespace)
 
-    @trace()
     def get_services(self, namespace=DEFAULT_NAMESPACE) -> pykube.query.Query:
         return pykube.Service.objects(self.client).filter(namespace=namespace)
 
-    @trace()
     def get_endpoints(self, namespace=DEFAULT_NAMESPACE) -> pykube.query.Query:
         return pykube.Endpoint.objects(self.client).filter(namespace=namespace)
 
-    @trace()
     def get_ingresses(self, namespace=DEFAULT_NAMESPACE) -> pykube.query.Query:
         return pykube.Ingress.objects(self.client).filter(namespace=namespace)
 
-    @trace()
     def get_persistentvolumes(self, **kwargs) -> pykube.query.Query:
         return pykube.PersistentVolume.objects(self.client).filter()
 
-    @trace()
     def get_persistentvolumeclaims(self, namespace=DEFAULT_NAMESPACE) -> pykube.query.Query:
         return pykube.PersistentVolumeClaim.objects(self.client).filter(namespace=namespace)
