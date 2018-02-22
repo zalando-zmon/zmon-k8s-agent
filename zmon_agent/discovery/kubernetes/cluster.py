@@ -6,9 +6,13 @@ import itertools
 import os
 import sys
 import logging
+import traceback
+
 import psycopg2
 
-from opentracing_utils import trace
+from opentracing import tags as ot_tags
+
+from opentracing_utils import trace, extract_span_from_kwargs, remove_span_from_kwargs
 
 from . import kube
 
@@ -535,22 +539,34 @@ def get_cluster_ingresses(kube_client, cluster_id, alias, environment, region, i
 ########################################################################################################################
 # POSTGRESQL   | TODO: move to separate discovery                                                                      #
 ########################################################################################################################
-@trace(tags={'kubernetes': 'postgres'})
+@trace(tags={'kubernetes': 'postgres'}, pass_span=True)
 def list_postgres_databases(*args, **kwargs):
+    current_span = extract_span_from_kwargs(**kwargs)
+    kwargs = remove_span_from_kwargs(**kwargs)
+
     try:
+        query = """
+            SELECT datname
+              FROM pg_database
+             WHERE datname NOT IN('postgres', 'template0', 'template1')
+        """
+
+        current_span.set_tag(ot_tags.PEER_ADDRESS,
+                             'psql://{}:{}'.format(kwargs.get('host'), kwargs.get('port')))
+        current_span.set_tag(ot_tags.DATABASE_INSTANCE, kwargs.get('dbname'))
+        current_span.set_tag(ot_tags.DATABASE_STATEMENT, query)
+
         kwargs.update({'connect_timeout': POSTGRESQL_CONNECT_TIMEOUT})
 
         conn = psycopg2.connect(*args, **kwargs)
 
         cur = conn.cursor()
-        cur.execute("""
-            SELECT datname
-              FROM pg_database
-             WHERE datname NOT IN('postgres', 'template0', 'template1')
-        """)
+        cur.execute(query)
         return [row[0] for row in cur.fetchall()]
     except Exception:
-        logger.exception("Failed to list DBs on %s", kwargs.get('host', '{no host specified}'))
+        current_span.set_tag('error', True)
+        current_span.log_kv({'exception': traceback.format_exc()})
+        logger.exception('Failed to list DBs on %s', kwargs.get('host', '{no host specified}'))
         return []
 
 
