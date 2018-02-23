@@ -34,6 +34,9 @@ class Client:
 
         return self.__pykube
 
+    def init(self):
+        self.invalidate_namespace_cache()
+
     def invalidate_namespace_cache(self):
         self.__namespaces = None
 

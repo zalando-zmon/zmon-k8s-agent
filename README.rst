@@ -34,6 +34,7 @@ The discovery object itself must provide:
   complete entity information
 * entities() - the actual discovery. It must return all currently available entities it discovered. It will
   receive a dict of ``id: entity`` with all entities of the types it set in requires().
+* init() - reset an internal state, e.g. remove all discovered namespaces to be able to detect new ones
 
 Discovery agents shipped with this core agent:
 

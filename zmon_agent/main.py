@@ -156,6 +156,7 @@ def sync(plugins, infrastructure_account, region, entity_service, verify, dry_ru
         err = False
         for plugin in run_list:
             try:
+                plugin.init()
                 dependencies = {}
                 for name in plugin.depends():
                     typed_entities = {k: v for k, v in entities if v['type'] == name}

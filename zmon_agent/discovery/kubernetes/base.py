@@ -38,6 +38,9 @@ class BaseDiscovery:
         self.infrastructure_account = infrastructure_account
         self.agent_type = AGENT_TYPE
 
+    def init(self):
+        pass
+
     def requires(self):
         raise RuntimeError('Base class not overwritten')
 
