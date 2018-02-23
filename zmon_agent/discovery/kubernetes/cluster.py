@@ -144,12 +144,8 @@ class Discovery:
             postgresql_cluster_member_entities, postgresql_database_entities))
 
 
-@trace(pass_span=True)
+@trace()
 def get_all(kube_client, kube_func, namespace=None, **kwargs) -> list:
-    current_span = extract_span_from_kwargs(**kwargs)
-
-    current_span.log_kv({'kube_func': kube_func.__name__})
-
     items = []
     namespaces = [namespace] if namespace else [ns.name for ns in kube_client.get_namespaces()]
 
