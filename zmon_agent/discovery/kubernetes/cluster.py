@@ -132,8 +132,8 @@ class Discovery:
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
             self.hosted_zone_format_string, namespace=self.namespace)
         postgresql_database_entities = get_postgresql_databases(
-            pce, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
-            self.postgres_user, self.postgres_pass)
+            self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account, self.postgres_user,
+            self.postgres_pass, pce)
 
         return list(itertools.chain(
             pod_container_entities, node_entities, namespace_entities, service_entities, replicaset_entities,
@@ -691,8 +691,8 @@ def get_postgresql_cluster_members(kube_client, cluster_id, alias, environment, 
 
 
 @trace(tags={'kubernetes': 'postgres'})
-def get_postgresql_databases(postgresql_clusters, cluster_id, alias, environment, region, infrastructure_account,
-                             postgres_user, postgres_pass):
+def get_postgresql_databases(cluster_id, alias, environment, region, infrastructure_account,
+                             postgres_user, postgres_pass, postgresql_clusters):
     if not (postgres_user and postgres_pass):
         return
 
