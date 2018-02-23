@@ -56,7 +56,7 @@ def remove_missing_entities(existing_ids, current_ids, zmon_client, dry_run=Fals
     error_count = 0
 
     if not dry_run:
-        logger.info('Removing {} entities from ZMon'.format(len(to_be_removed_ids)))
+        logger.info('Removing {} entities from ZMON'.format(len(to_be_removed_ids)))
         for entity_id in to_be_removed_ids:
             logger.info('Removing entity with id: {}'.format(entity_id))
             try:
@@ -93,7 +93,7 @@ def add_new_entities(all_current_entities, existing_entities, zmon_client, dry_r
 
     if not dry_run:
         try:
-            logger.info('Found {} new entities to be added in ZMon'.format(len(new_entities)))
+            logger.info('Found {} new entities to be added in ZMON'.format(len(new_entities)))
             for entity in new_entities:
                 logger.info('Adding new {} entity with ID: {}'.format(entity['type'], entity['id']))
 
@@ -105,8 +105,6 @@ def add_new_entities(all_current_entities, existing_entities, zmon_client, dry_r
             logger.exception('Failed to add entity!')
             current_span.log_kv({'exception': traceback.format_exc()})
             error_count += 1
-
-    current_span.log_kv({'new_entities': new_entities})
 
     return new_entities, error_count
 
