@@ -10,7 +10,7 @@ import traceback
 
 import psycopg2
 
-from opentracing import tags as ot_tags
+from opentracing.ext import tags as ot_tags
 
 from opentracing_utils import trace, extract_span_from_kwargs, remove_span_from_kwargs
 
