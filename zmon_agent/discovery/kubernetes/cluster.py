@@ -321,7 +321,7 @@ class KubeDiscovery(BaseDiscovery):
                 'replicas': obj['spec'].get('replicas'),
                 'replicas_status': obj['status'].get('replicas'),
                 'actual_replicas': obj['status'].get('readyReplicas'),
-                'version': obj['metadata']['labels']['version']
+                'version': obj['metadata']['labels'].get('version', '__NONE__'),
             }
 
             entity.update(self.entity_labels(obj, 'labels', 'annotations'))
