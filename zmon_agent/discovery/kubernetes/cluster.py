@@ -92,7 +92,7 @@ class Discovery:
 
         return entity
 
-    @trace()
+    @trace(tags={'discovery': 'kubernetes'})
     def get_entities(self) -> list:
 
         self.kube_client.invalidate_namespace_cache()
@@ -144,10 +144,13 @@ class Discovery:
             postgresql_cluster_member_entities, postgresql_database_entities))
 
 
-@trace()
-def get_all(kube_client, kube_func, namespace=None) -> list:
-    items = []
+@trace(pass_span=True)
+def get_all(kube_client, kube_func, namespace=None, **kwargs) -> list:
+    current_span = extract_span_from_kwargs(**kwargs)
 
+    current_span.log_kv({'kube_func': kube_func.__name__})
+
+    items = []
     namespaces = [namespace] if namespace else [ns.name for ns in kube_client.get_namespaces()]
 
     for ns in namespaces:
