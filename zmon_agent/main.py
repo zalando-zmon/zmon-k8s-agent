@@ -249,6 +249,9 @@ def main():
         entity_service = os.environ.get('ZMON_AGENT_ENTITY_SERVICE_URL', args.entity_service)
         interval = os.environ.get('ZMON_AGENT_INTERVAL', args.interval)
 
+        init_span.set_tag('account', infrastructure_account)
+        init_span.set_tag('region', region)
+
         if interval:
             interval = int(interval)
 
