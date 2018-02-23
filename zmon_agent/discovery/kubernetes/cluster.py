@@ -72,6 +72,9 @@ class Discovery:
         self.region = region
         self.infrastructure_account = infrastructure_account
 
+    def get_discovery_tags(self) -> dict:
+        return {'cluster_id': self.cluster_id, 'alias': self.alias, 'environment': self.environment}
+
     def get_filter_query(self) -> dict:
         return {'created_by': AGENT_TYPE, 'kube_cluster': self.cluster_id}
 

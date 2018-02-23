@@ -118,8 +118,16 @@ def sync(infrastructure_account, region, entity_service, verify, dry_run, interv
         try:
             sync_span = opentracing.tracer.start_span(operation_name='zmon-agent-sync')
 
+            sync_span.set_tag('account', infrastructure_account)
+            sync_span.set_tag('region', region)
+            sync_span.log_kv({'sync_interval': interval, 'discovery_plugin_count': 1})
+
             with sync_span:
                 zmon_client = get_clients(entity_service, verify=verify)
+
+                discovery_tags = discovery.get_discovery_tags()
+                for k, v in discovery_tags.items():
+                    sync_span.set_tag(k, v)
 
                 account_entity = discovery.get_account_entity()
 
