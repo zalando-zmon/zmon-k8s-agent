@@ -212,7 +212,8 @@ def main():
                       'ZMON_AGENT_INTERVAL env variable.')
 
     # OPENTRACING SUPPORT
-    argp.add_argument('--opentracing', dest='opentracing', default=os.environ.get('ZMON_AGENT_OPENTRACING'))
+    argp.add_argument('--opentracing', dest='opentracing', default=os.environ.get('ZMON_AGENT_OPENTRACING_TRACER'),
+                      help='OpenTracing tracer name as supported by opentracing-utils. Please Ignore for NOOP tracer.')
 
     argp.add_argument('-j', '--json', dest='json', action='store_true', help='Print JSON output only.', default=False)
     argp.add_argument('--skip-ssl', dest='skip_ssl', action='store_true', default=False)
