@@ -770,7 +770,7 @@ def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region,
             'shards': {
                 'postgres': '{}:{}/postgres'.format(service_dns_name, POSTGRESQL_DEFAULT_PORT)
             },
-            'expected_replica_count': pg.get('expected_instance_count', 0),
+            'expected_replica_count': ss.get('replicas', 0),
             'current_replica_count': ss.get('actual_replicas', 0),
             'statefulset_error': statefulset_error,
             'deeplink1': '{}/#/status/{}'.format(hosted_zone.format('pgui', alias), version),
@@ -778,7 +778,7 @@ def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region,
             'deeplink2': '{}/#/clusters/{}'.format(hosted_zone.format('pgview', alias), version),
             'icon2': 'fa-line-chart',
             'uid': pg.get('uid', ''),
-            'namespace': pg.get('namespace', '')
+            'namespace': namespace
         }
 
 
