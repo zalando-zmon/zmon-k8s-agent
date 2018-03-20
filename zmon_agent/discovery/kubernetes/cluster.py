@@ -7,6 +7,7 @@ import os
 import sys
 import logging
 import traceback
+import pykube
 
 import psycopg2
 
@@ -31,6 +32,7 @@ INGRESS_TYPE = 'kube_ingress'
 JOB_TYPE = 'kube_job'
 CRONJOB_TYPE = 'kube_cronjob'
 
+POSTGRESQL_CRD_TYPE = 'postgresql'
 POSTGRESQL_CLUSTER_TYPE = 'postgresql_cluster'
 POSTGRESQL_CLUSTER_MEMBER_TYPE = 'postgresql_cluster_member'
 POSTGRESQL_DATABASE_TYPE = 'postgresql_database'
@@ -49,6 +51,20 @@ SKIPPED_ANNOTATIONS = set(('kubernetes.io/created-by'))
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(stream=sys.stdout))
 logger.setLevel(logging.INFO)
+
+
+class PostgreSQL(pykube.objects.NamespacedAPIObject):
+    version = "acid.zalan.do/v1"
+    endpoint = "postgresqls"
+    kind = "postgresql"
+
+
+class PostgreSQLClient(kube.Client):
+    def __init__(self, config_file_path=None, service_acc_path=kube.DEFAULT_SERVICE_ACC):
+        super().__init__(config_file_path, service_acc_path)
+
+    def get_postgresqls(self, namespace=kube.DEFAULT_NAMESPACE) -> pykube.query.Query:
+        return PostgreSQL.objects(self.client).filter(namespace=namespace)
 
 
 class Discovery:
@@ -70,6 +86,7 @@ class Discovery:
 
         config_path = os.environ.get('ZMON_AGENT_KUBERNETES_CONFIG_PATH')
         self.kube_client = kube.Client(config_file_path=config_path)
+        self.pg_client = PostgreSQLClient(config_file_path=config_path)
 
         self.region = region
         self.infrastructure_account = infrastructure_account
@@ -137,6 +154,9 @@ class Discovery:
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
             namespace=self.namespace)
 
+        postgresql_entities = get_postgresqls(self.pg_client, self.cluster_id, self.alias, self.environment,
+                                              self.region, self.infrastructure_account, namespace=self.namespace)
+
         postgresql_cluster_entities, pce = itertools.tee(
             get_postgresql_clusters(self.kube_client, self.cluster_id, self.alias, self.environment, self.region,
                                     self.infrastructure_account, self.hosted_zone_format_string, sse,
@@ -151,7 +171,8 @@ class Discovery:
         return list(itertools.chain(
             pod_container_entities, node_entities, namespace_entities, service_entities, replicaset_entities,
             daemonset_entities, ingress_entities, statefulset_entities, job_entities, cronjob_entities,
-            postgresql_cluster_entities, postgresql_cluster_member_entities, postgresql_database_entities))
+            postgresql_cluster_entities, postgresql_cluster_member_entities, postgresql_database_entities,
+            postgresql_entities))
 
 
 @trace()
@@ -669,6 +690,28 @@ def list_postgres_databases(*args, **kwargs):
         current_span.log_kv({'exception': traceback.format_exc()})
         logger.exception('Failed to list DBs on %s', kwargs.get('host', '{no host specified}'))
         return []
+
+
+def get_postgresqls(pg_client, cluster_id, alias, environment, region, infrastructure_account,
+                    namespace=None, **kwargs):
+
+    postgresqls = get_all(pg_client, pg_client.get_postgresqls, namespace)
+
+    for postgres in postgresqls:
+        pg = postgres.obj
+        metadata = pg.get('metadata', {})
+
+        entity = {
+            'name': metadata.get('name', ''),
+            'id': 'postgresql-{}-{}[{}]'.format(metadata.get('name', ''), metadata.get('namespace', ''), cluster_id),
+            'type': POSTGRESQL_CRD_TYPE,
+            'team': metadata.get('labels', {}).get('team', ''),
+            'uid': metadata.get('uid'),
+            'expected_instances': pg.get('spec', {}).get('numberOfInstances'),
+            'namespace': metadata.get('namespace', '')
+        }
+
+        yield entity
 
 
 @trace(tags={'kubernetes': 'postgres'}, pass_span=True)
