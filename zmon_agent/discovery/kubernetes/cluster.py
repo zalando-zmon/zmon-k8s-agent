@@ -165,10 +165,9 @@ class Discovery:
         postgresql_cluster_member_entities = get_postgresql_cluster_members(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
             self.hosted_zone_format_string, namespace=self.namespace)
-        postgresql_database_entities = []
-        # postgresql_database_entities = get_postgresql_databases(
-        #     self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account, self.postgres_user,
-        #     self.postgres_pass, pce)
+        postgresql_database_entities = get_postgresql_databases(
+            self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account, self.postgres_user,
+            self.postgres_pass, pce)
 
         return list(itertools.chain(
             pod_container_entities, node_entities, namespace_entities, service_entities, replicaset_entities,
