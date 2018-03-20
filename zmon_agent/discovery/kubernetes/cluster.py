@@ -84,9 +84,9 @@ class Discovery:
         if not self.cluster_id:
             raise RuntimeError('Cannot determine cluster ID. Please set env variable ZMON_AGENT_KUBERNETES_CLUSTER_ID')
 
-        config_path = os.environ.get('ZMON_AGENT_KUBERNETES_CONFIG_PATH')
-        self.kube_client = kube.Client(config_file_path=config_path)
-        self.pg_client = PostgreSQLClient(config_file_path=config_path)
+        self.config_path = os.environ.get('ZMON_AGENT_KUBERNETES_CONFIG_PATH')
+        self.kube_client = kube.Client(config_file_path=self.config_path)
+        self.pg_client = PostgreSQLClient(config_file_path=self.config_path)
 
         self.region = region
         self.infrastructure_account = infrastructure_account
@@ -154,19 +154,21 @@ class Discovery:
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
             namespace=self.namespace)
 
-        postgresql_entities = get_postgresqls(self.pg_client, self.cluster_id, self.alias, self.environment,
-                                              self.region, self.infrastructure_account, namespace=self.namespace)
+        postgresql_entities, pge = itertools.tee(get_postgresqls(self.pg_client, self.cluster_id, self.alias,
+                                                                 self.environment, self.region,
+                                                                 self.infrastructure_account, namespace=self.namespace))
 
         postgresql_cluster_entities, pce = itertools.tee(
             get_postgresql_clusters(self.kube_client, self.cluster_id, self.alias, self.environment, self.region,
-                                    self.infrastructure_account, self.hosted_zone_format_string, sse,
+                                    self.infrastructure_account, self.hosted_zone_format_string, pge, sse,
                                     namespace=self.namespace))
         postgresql_cluster_member_entities = get_postgresql_cluster_members(
             self.kube_client, self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account,
             self.hosted_zone_format_string, namespace=self.namespace)
-        postgresql_database_entities = get_postgresql_databases(
-            self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account, self.postgres_user,
-            self.postgres_pass, pce)
+        postgresql_database_entities = []
+        # postgresql_database_entities = get_postgresql_databases(
+        #     self.cluster_id, self.alias, self.environment, self.region, self.infrastructure_account, self.postgres_user,
+        #     self.postgres_pass, pce)
 
         return list(itertools.chain(
             pod_container_entities, node_entities, namespace_entities, service_entities, replicaset_entities,
@@ -707,7 +709,7 @@ def get_postgresqls(pg_client, cluster_id, alias, environment, region, infrastru
             'type': POSTGRESQL_CRD_TYPE,
             'team': metadata.get('labels', {}).get('team', ''),
             'uid': metadata.get('uid'),
-            'expected_instances': pg.get('spec', {}).get('numberOfInstances'),
+            'expected_instance_count': pg.get('spec', {}).get('numberOfInstances'),
             'namespace': metadata.get('namespace', '')
         }
 
@@ -716,13 +718,13 @@ def get_postgresqls(pg_client, cluster_id, alias, environment, region, infrastru
 
 @trace(tags={'kubernetes': 'postgres'}, pass_span=True)
 def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region, infrastructure_account, hosted_zone,
-                            statefulsets, namespace=None, **kwargs):
+                            postgresqls, statefulsets, namespace=None, **kwargs):
 
     current_span = extract_span_from_kwargs(**kwargs)
 
     ssets = [ss for ss in statefulsets if 'version' in ss]
+    pgs = list(postgresqls)
 
-    # TODO in theory clusters should be discovered using CRDs
     services = get_all(kube_client, kube_client.get_services, namespace, span=current_span)
 
     for service in services:
@@ -747,6 +749,12 @@ def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region,
         else:
             ss = statefulset[0]
 
+        postgresql = [pg for pg in pgs if pg['name'] == version]
+
+        pg = {}
+        if postgresql:
+            pg = postgresql[0]
+
         yield {
             'id': 'pg-{}[{}]'.format(service.name, cluster_id),
             'type': POSTGRESQL_CLUSTER_TYPE,
@@ -763,15 +771,15 @@ def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region,
             'shards': {
                 'postgres': '{}:{}/postgres'.format(service_dns_name, POSTGRESQL_DEFAULT_PORT)
             },
-            'expected_replica_count': ss.get('replicas', 0),
+            'expected_replica_count': pg.get('expected_instance_count', 0),
             'current_replica_count': ss.get('actual_replicas', 0),
             'statefulset_error': statefulset_error,
             'deeplink1': '{}/#/status/{}'.format(hosted_zone.format('pgui', alias), version),
             'icon1': 'fa-server',
             'deeplink2': '{}/#/clusters/{}'.format(hosted_zone.format('pgview', alias), version),
             'icon2': 'fa-line-chart',
-            'uid': ss.get('metadata', {}).get('uid', ''),
-            'namespace': ss.get('metadata', {}).get('namespace', '')
+            'uid': pg.get('uid', ''),
+            'namespace': pg.get('namespace', '')
         }
 
 
