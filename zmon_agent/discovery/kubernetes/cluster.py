@@ -61,16 +61,24 @@ class PostgreSQL(pykube.objects.NamespacedAPIObject):
     kind = "postgresql"
 
 
+class CustomResourceDefinition(pykube.objects.APIObject):
+    version = "apiextensions.k8s.io/v1beta1"
+    endpoint = "customresourcedefinitions"
+    kind = "CustomResourceDefinition"
+
+
 class PostgreSQLClient(kube.Client):
     def __init__(self, config_file_path=None, service_acc_path=kube.DEFAULT_SERVICE_ACC):
         super().__init__(config_file_path, service_acc_path)
-        self.is_operator_present = True
+        self.is_operator_present = False
+
+        for crd in CustomResourceDefinition.objects(self.client):
+            if str(crd) == 'postgresqls.acid.zalan.do':
+                self.is_operator_present = True
 
     def get_postgresqls(self, namespace=kube.DEFAULT_NAMESPACE) -> pykube.query.Query:
-        try:
+        if self.is_operator_present:
             return PostgreSQL.objects(self.client).filter(namespace=namespace)
-        except HTTPError:  # if the operator is not deployed, this happens
-            self.is_operator_present = False
 
 
 class Discovery:
