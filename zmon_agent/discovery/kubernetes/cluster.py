@@ -42,7 +42,7 @@ POSTGRESQL_CONNECT_TIMEOUT = os.environ.get('ZMON_AGENT_POSTGRESQL_CONNECT_TIMEO
 
 INSTANCE_TYPE_LABEL = 'beta.kubernetes.io/instance-type'
 
-PROTECTED_FIELDS = set(('id', 'type', 'infrastructure_account', 'created_by', 'region'))
+PROTECTED_FIELDS = set(('id', 'type', 'infrastructure_account', 'created_by', 'region', 'team'))
 
 SERVICE_ACCOUNT_PATH = '/var/run/secrets/kubernetes.io/serviceaccount'
 
