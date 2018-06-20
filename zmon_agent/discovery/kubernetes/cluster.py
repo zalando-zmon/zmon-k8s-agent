@@ -972,9 +972,10 @@ def get_postgresql_cluster_members(kube_client, cluster_id, alias, environment, 
             'application': 'spilo',
             'version': cluster_name,
             'volume': ebs_volume_id,
-            'deeplink1': '{}/#/status/{}'.format(hosted_zone.format('pgui', alias), cluster_name),
+            'deeplink1': '{}/#/status/{}/{}'.format(hosted_zone.format('pgui', alias), pod_namespace, cluster_name),
             'icon1': 'fa-server',
-            'deeplink2': '{}/#/clusters/{}/{}'.format(hosted_zone.format('pgview', alias), cluster_name, pod.name),
+            'deeplink2': '{}/#/clusters/{}/{}/{}'.format(hosted_zone.format('pgview', alias), pod_namespace,
+                                                         cluster_name, pod.name),
             'icon2': 'fa-line-chart'
         }
 
