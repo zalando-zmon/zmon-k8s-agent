@@ -900,12 +900,12 @@ def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region,
             'expected_replica_count': ss.get('replicas', 0),
             'current_replica_count': ss.get('actual_replicas', 0),
             'statefulset_error': statefulset_error,
-            'deeplink1': '{}/#/status/{}'.format(hosted_zone.format('pgui', alias), version),
+            'deeplink1': '{}/#/status/{}/{}'.format(hosted_zone.format('pgui', alias), service_namespace, version),
             'icon1': 'fa-server',
-            'deeplink2': '{}/#/clusters/{}'.format(hosted_zone.format('pgview', alias), version),
+            'deeplink2': '{}/#/clusters/{}/{}'.format(hosted_zone.format('pgview', alias), service_namespace, version),
             'icon2': 'fa-line-chart',
             'uid': pg.get('uid', ''),
-            'namespace': namespace
+            'namespace': service_namespace
         }
 
         entities.append(entity)
