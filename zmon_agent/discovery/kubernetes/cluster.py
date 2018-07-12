@@ -310,7 +310,11 @@ def get_cluster_pods_and_containers(
             container_ready = container_statuses.get(container['name'], {}).get('ready', False)
             container_restarts = container_statuses.get(container['name'], {}).get('restartCount', 0)
             container_ports = [p['containerPort'] for p in container.get('ports', []) if 'containerPort' in p]
-            container_resources = parse_resources(container.get('resources', {}))
+
+            try:
+                container_resources = parse_resources(container.get('resources', {}))
+            except Exception:
+                container_resources = None
 
             container_entity = {
                 'id': 'container-{}-{}-{}[{}]'.format(pod.name, pod.namespace, container_name, cluster_id),

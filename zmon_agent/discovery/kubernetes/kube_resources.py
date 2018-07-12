@@ -75,7 +75,8 @@ def parse_resource(resource):
     match = re.match(_RESOURCE_REGEX, resource)
     if not match:
         raise ValueError("Invalid resource definition: " + resource)
-    resource = float(match.group('resource'))
+
+    value = float(match.group('resource'))
     unit_name = match.group('unit')
     unit = _UNITS[unit_name] if unit_name else 1
-    return resource * unit
+    return value * unit
