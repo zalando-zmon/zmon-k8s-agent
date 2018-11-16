@@ -31,8 +31,14 @@ def parse_resource(resource):
     >>> parse_resource("3")
     3.0
 
-    >>> parse_resource("30m")
-    0.03
+    >>> "{:.09f}".format(parse_resource('3n'))
+    '0.000000003'
+
+    >>> "{:.09f}".format(parse_resource('3u'))
+    '0.000003000'
+
+    >>> "{:.09f}".format(parse_resource('3m'))
+    '0.003000000'
 
     >>> parse_resource("3k")
     3000.0
