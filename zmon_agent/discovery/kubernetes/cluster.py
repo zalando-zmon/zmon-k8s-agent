@@ -3,6 +3,7 @@
 # TODO: this is pilot implementation!
 
 import itertools
+import json
 import os
 import sys
 import logging
@@ -46,7 +47,6 @@ POSTGRESQL_CONNECT_TIMEOUT = os.environ.get('ZMON_AGENT_POSTGRESQL_CONNECT_TIMEO
 HPA_TYPE = 'kube_hpa'
 
 # Custom Resources
-VPA_TYPE = 'kube_vpa'
 CREDENTIALSET_TYPE = 'kube_credentialset'
 
 INSTANCE_TYPE_LABEL = 'beta.kubernetes.io/instance-type'
@@ -1155,6 +1155,10 @@ def get_cluster_hpas(kube_client, cluster_id, alias, environment, region, infras
     for h in hpas:
         obj = h.obj
 
+        conditions_annotation = obj['metadata']['annotations']['autoscaling.alpha.kubernetes.io/conditions']
+        conditions_list = json.loads(conditions_annotation)
+        conditions = {c['type']: c['status'] == 'True' for c in conditions_list}
+
         entity = {
             'id': 'hpa-{}-{}[{}]'.format(h.name, h.namespace, cluster_id),
             'type': HPA_TYPE,
@@ -1169,7 +1173,12 @@ def get_cluster_hpas(kube_client, cluster_id, alias, environment, region, infras
             'hpa_namespace': obj['metadata']['namespace'],
 
             'hpa_desired_replicas': obj['status']['desiredReplicas'],
-            'hpa_current_replicas': obj['status']['currentReplicas']
+            'hpa_current_replicas': obj['status']['currentReplicas'],
+            'hpa_min_replicas': obj['spec']['minReplicas'],
+            'hpa_max_replicas': obj['spec']['maxReplicas'],
+            'able_to_scale': conditions.get('AbleToScale', False),
+            'scaling_active': conditions.get('ScalingActive', False),
+            'scaling_limited': conditions.get('ScalingLimited', False),
         }
 
         entity.update(entity_labels(obj, 'labels', 'annotations'))
