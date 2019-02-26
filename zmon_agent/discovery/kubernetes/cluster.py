@@ -962,8 +962,10 @@ def get_postgresql_clusters(kube_client, cluster_id, alias, environment, region,
         labels = obj['metadata'].get('labels', {})
         version = labels.get('version', '')
 
-        # we skip non-Spilos and replica services
-        if labels.get('application') != 'spilo' or labels.get('spilo-role') == 'replica':
+        # we skip non-Spilos and replica services and headless services (-config)
+        if labels.get('application') != 'spilo' or \
+           labels.get('spilo-role') == 'replica' or \
+           obj['spec']['type'] == 'ClusterIP':
             continue
 
         service_namespace = obj['metadata']['namespace']
