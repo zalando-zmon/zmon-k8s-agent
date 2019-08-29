@@ -1144,7 +1144,7 @@ def get_postgresql_cluster_members(kube_client, cluster_id, alias, environment, 
             'namespace': pod_namespace,
             'team_id': labels.get('team'),
             'start_time': obj.get('status', {}).get('startTime', ''),
-            'patroni_state': json.loads(obj['metadata']['annotations']['status'])["state"]
+            'patroni_state': json.loads(obj.get('metadata', {}).get('annotations', {}).get('status', {}))["state"]
         }
 
         entities.append(entity)
