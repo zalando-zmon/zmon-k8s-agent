@@ -996,7 +996,8 @@ def get_postgresqls(pg_client, cluster_id, alias, environment, region, infrastru
             'expected_instance_count': spec.get('numberOfInstances'),
             'namespace': metadata.get('namespace', ''),
             'spec': spec,
-            'postgresql_version': spec.get('postgresql', {}).get('version')
+            'postgresql_version': spec.get('postgresql', {}).get('version'),
+            'pg_start_time': metadata.get('creationTimestamp')
         }
 
         entities.append(entity)
@@ -1143,8 +1144,8 @@ def get_postgresql_cluster_members(kube_client, cluster_id, alias, environment, 
             'icon2': 'fa-line-chart',
             'namespace': pod_namespace,
             'team_id': labels.get('team'),
-            'start_time': obj.get('status', {}).get('startTime', ''),
-            'patroni_state': json.loads(obj.get('metadata', {}).get('annotations', {}).get('status', {}))["state"]
+            'pod_start_time': obj.get('status', {}).get('startTime', ''),
+            'patroni_state': json.loads(obj.get("metadata", {}).get("annotations", {}).get("status", {})).get("state", {})
         }
 
         entities.append(entity)
