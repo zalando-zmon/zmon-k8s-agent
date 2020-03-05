@@ -351,6 +351,7 @@ def get_cluster_pods_and_containers(
             'pod_node_name': obj['spec'].get('nodeName', ''),
 
             'pod_phase': obj['status'].get('phase'),
+            'pod_state_reason': obj['status'].get('reason'),
             'pod_initialized': conditions.get('Initialized', False),
             'pod_ready': conditions.get('Ready', False),
             'pod_scheduled': conditions.get('PodScheduled', False),
